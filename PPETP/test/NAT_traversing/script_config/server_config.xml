@@ -1,0 +1,29 @@
+<configuration>
+   <session port="12345">
+   
+      <server address="192.168.0.1" port="12345" id="12"/>
+      
+      <output>
+         <channel id="1" max-target="3">
+            <profile name="basic">
+               <parameter name="field" value="16" />
+               <parameter name="reduction-factor" value="8" />
+            </profile>
+         </channel>
+         <channel id="2">
+            <profile name="basic"/>
+         </channel>
+      </output>
+      
+      <input>
+         <peer>
+            <address address="192.168.0.1" port="3214" channel="4" />
+            <auth-data>
+               <auth-profile name="void" />
+            </auth-data>
+         </peer>            
+      </input>
+      
+   </session>
+</configuration>
+

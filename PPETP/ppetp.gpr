@@ -1,0 +1,37 @@
+-- -*-Ada-*-
+with "xmlada";
+
+project Ppetp is
+
+   for Object_Dir use "obj";
+   for Library_Name use "ppetp";
+   for Library_Dir use "lib";
+   for Library_Version use "0.0";
+   for Library_Interface use ("PPETP.API");
+   type Xmlada_Kind_Type is
+      ("static", "relocatable");
+   Library_Type : Xmlada_Kind_Type := external ("LIBRARY_TYPE");
+
+   case Library_Type is
+
+      when "relocatable" =>
+         for Source_Dirs use (".", "Algebra", "Algebra/Galois", "Algebra/Matrix", "Channels", "Mailboxes", "Packets", "Profiles", "Profiles/Basic", "Profiles/Vandermonde", "Queues", "Sessions", "Sources", "Tables", "Task_Control", "Task_Input", 
+"Task_Main", "Integer_Lists", "Smart_Pointers", "Parsing_Buffers", "API", "Targets", "Transmitters", "Auth", "Auth/Crypt", "Network", "Auth/Checkers/Signed", "Auth/Checkers/Tokens", "Auth/Checkers/Void", "Auth/Profiles", "Utilities", 
+"Configuration", "Algebra/Bignum", "Auth/Checkers");
+
+      when "static" =>
+         for Source_Dirs use (".", "Algebra", "Algebra/Galois", "Algebra/Matrix", "Channels", "Mailboxes", "Packets", "Profiles", "Profiles/Basic", "Profiles/Vandermonde", "Queues", "Sessions", "Sources", "Tables", "Task_Control", "Task_Input", 
+"Task_Main", "Integer_Lists", "Smart_Pointers", "Parsing_Buffers", "API", "Targets", "Transmitters", "Auth", "Auth/Crypt", "Network", "Auth/Checkers/Signed", "Auth/Checkers/Tokens", "Auth/Checkers/Void", "Auth/Profiles", "Utilities", 
+"Configuration");
+   end case;
+
+   package Compiler is
+      for Default_Switches ("ada") use ("-O3", "-gnatn", "-gnata", "-gnat05");
+   end Compiler;
+
+   package Pretty_Printer is
+      for Default_Switches ("ada") use ("-A1", "-A2", "-A4", "-c2");
+   end Pretty_Printer;
+
+end Ppetp;
+

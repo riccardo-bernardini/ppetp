@@ -1,0 +1,5 @@
+with "medusa_basic";
+project Medusa is
+   for Source_Dirs use ("Encoding/**", "Input/**", "Merging/**",
+	"Parsing/**", "Processor/**", "Reduction/**");
+end Medusa;

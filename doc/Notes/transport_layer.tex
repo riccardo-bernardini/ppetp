@@ -1,0 +1,515 @@
+%-*- mode: latex; ispell-local-dictionary: "english" -*-
+\documentclass{article}
+
+\usepackage{amsmath}
+\usepackage{amsbsy}
+\usepackage{amssymb}
+\usepackage{amsthm,amsfonts}
+\usepackage{color}
+\usepackage{srcltx}
+\usepackage{appendix}
+\input{macrodef}
+%
+\title{Notes for a P2P transport layer}
+\author{R. Bernardini}
+%
+\setcounter{secnumdepth}{3} 
+\setcounter{tocdepth}{3}
+\begin{document}
+  \maketitle
+\section{Why this document?}
+It came to my mind that \medusa- can be transformed in a
+pseudo-transport layer which can be used to transmit any sequence of
+packets.  The idea is that \medusa- could be used as an
+almost-one-to-one replacement for UDP in order to exploit any
+multimedia-format-over-UDP already available.  For example, by
+transmitting RTP/AVP packets over \medusa- one could obtain
+RTP/AVP/\medusa- protocol.
+
+This document is just a random collection of notes about this idea.
+
+\section{Overview}
+\label{sect:0;transport_layer}
+
+The procedure is something like this:
+
+\begin{enumerate}
+\item
+A node wants to receive a stream of packets over \medusa-.  To such an
+end, it contacts the packet source and ask a stream description.
+\item
+The node creates a new session over \medusa- and initializes it by
+giving it the stream description received by the server.
+\item
+If the node wants to receive data from a peer, it calls a function
+\ttt pull_from!
+\item
+If the node wants to transmit data to another perr, it calls \ttt
+push_to! 
+\item
+The node will read received packets via a \ttt recv! function
+\item
+The node will transmit packets via a \ttt send! function
+\item 
+The node can create several output streams
+\end{enumerate}
+%
+Let us try to make an API
+
+\begin{API}
+  \function{New_Session(Description : String)} create a new \medusa-
+  session and init it with the \ttt Description! string (see
+  Appendix~\ref{sect:1;transport_layer}).  Return an handler to the
+  new session.
+
+  \function{Push_To(Session, IP_Address, Port, Output := 0)} Send a
+  the reduced stream number \ttt Output! to the peer with \ttt
+  IP_Address! and \ttt Port!
+
+  \function{Pull_From(Session, IP_Address, Port, Auth)} Contact on
+  \ttt Port! the peer wiht \ttt IP_Address! and ask it a new reduced
+  stream. 
+
+  \function{New_Reduced_Stream(Session)} Create a new reduced
+  stream. Return the stream number.
+
+  \function{Close_Reduced_Stream(Session, Stream)} Close a reduced
+  output stream.
+
+  \function{Register_Event_Callback(Session, Callback)} Register a
+  function to be called in case of exceptional events (i.e., a
+  non-responding node)
+
+  \function{Send(Session, Packet)} Send a new packet over the network
+
+  \function{Recv(Session, Packet)} Wait for a new packet to arrive
+
+  \function{Shutdown(Session)} Close the session.
+
+  \function{Command_Port(Session)} Return the port the Session is
+  listening for commands (used by \ttt Push_To! and \ttt Pull_From!)
+\end{API}
+
+Slightly more detail procedure:
+
+\newsavebox\dataexchangebox
+\newcommand{\dataexchange}[2]{
+\savebox{\dataexchangebox}{\parbox[t]{50em}{\tt #2}}
+\begin{trivlist}
+\item
+  \begin{tabular}{p{4em}p{50em}}
+    \tt #1 & \usebox{\dataexchangebox}
+  \end{tabular}
+\end{trivlist}
+}
+
+\dataexchange{C->W}{GET /concert.sdp HTTP/1.1}
+\dataexchange{W->C}{HTTP/1.1 200 OK\\
+\ldots\\
+m=video \ldots\\
+a=control:rtsp://www.example.com/video\\
+m=audio \ldots\\
+a=control:rtsp://www.example.com/audio}
+
+Here the client open a new \medusa- session.  \medusa- open a new
+command port (3456).  The client retrieves the command port and pass
+it to the server.  When the session was opened, the server IP was
+given to the opening function.
+
+\dataexchange{C->S}{SETUP rtsp://www.example.com/video RTSP/1.0\\
+Transport: RTP/AVP/MTP 3456\\
+}
+
+Now the server sends to the command port the stream description.
+
+\dataexchange{S->C (3456)}{CONFIGURE\\
+\\
+<stream>\\
+<packet-class>\\
+\ldots\\
+</packet-class>\\
+</stream>}
+\dataexchange{C->S}{200 OK}
+
+The client configured the \medusa- layer successfully.  Now the server
+can reply to the \ttt SETUP! request.
+
+\dataexchange{S->C}{RTSP/1.0 200 OK\\
+Transport: RTP/AVP/MTP\\
+Seed: ABC444\\
+MTP-Info: peer-list="123.11.12.10:3567:AEF468,156.23.34.1:6234:AEF468"}
+
+In this case the server replies with a list of peers.  The node will
+give the addresses in the peer-list to the \ttt Pull_From! procedure
+which will send something as
+
+\dataexchange{C->P}{SEND\\
+Destination: 123.234.1.2/3333 3567\\
+Auth: AEF468}
+\dataexchange{P->C}{200 OK}
+
+The value of field \ttt Auth! is created by hashing the \ttt Seed!
+value that the server gave to the peer and the destination IP/port. 
+
+\section{Other random ideas}
+\label{sect:2;transport_layer}
+
+Maybe the best approach is to split the \medusa- transport protocol
+into two levels: a basic level which, more or less, coincides with the
+DSP module and an upper level which controls the lower one.  The upper
+level is not strictly necessary, but it could prove convenient.
+
+\subsection{Lower level model}
+\label{sub:2.0;transport_layer}
+
+\medusa-, as TCP, has \emph{connections}.  From the point of view of a
+node, a \medusa- connection has 
+
+\begin{itemize}
+  \item
+    One or more \emph{input ports} (which correspond to UDP ports)
+  \item
+    One or more \emph{output channels} (each channel correspond to a
+    reduction choice)
+  \item
+    Each channel has one or more \emph{output ports} (each output port
+    corresponds to a destination peer)
+\end{itemize}
+%
+Every \medusa- connection must be configured by assigning it a
+\emph{profile} which describes the composition of the stream
+transmitted over \medusa-.  This makes the \medusa- transport protocol
+quite peculiar since it must ``know'' something about the type of data
+which are transmitted.
+
+A profile must specify
+
+\begin{itemize}
+  \item 
+    The classes of packets in the stream
+  \item
+    For every class of packet, 
+    \begin{itemize}
+      \item
+        How to recover the packet from its components (for the source
+        it is also necessary to specify how a packet is split into its
+        components) 
+      \item
+        The components contained in a packet
+        and, more precisely,
+        \begin{itemize}
+          \item
+            If the component is analog or binary
+          \item
+            Which encoder/decoder is to be used to encode the component
+        \end{itemize}
+    \end{itemize}
+\end{itemize}
+%
+Profiles will be described by means of XML syntax.  A \medusa- API
+could have a configuration function which accepts XML profile
+description as strings.  One could object that XML parsing could
+require time, but since it is done only at configuration time, we can
+afford it.  It is reasonable to assume that in future we could have
+also profiles for packet classes and components, although this is not
+strictly necessary.
+
+At least one profile is defined
+
+\begin{verbatim}
+  <stream-profile name="basic">
+    <packet>
+      <component>
+        <analog/>
+        <encoder>trivial</encoder>
+      <component/>
+      <join>trivial</join>
+    </packet>
+  </stream-profile>
+\end{verbatim}
+
+Profile \ttt basic! corresponds to a stream of binary packets
+considered as single binary components.  Profile \ttt basic! is a
+catch-all profile and it can be used with any type of data.
+
+Note that the profile does not specify how the components are reduced.
+This because the profile gives the \emph{structure} of the transmetted
+stream, while the reduction details are a ``private'' matter of the
+node. Of course, some parameters, such as the reduction factor, can be
+enforced or suggested by some entity external to the node (e.g., the
+server in a live streaming application).  Nevertheless, the reduction
+details are not part of the stream structure.  The reduction details
+(reduction factor and reduction vector) will be typically included in
+the transmitted packet or determined by other means.
+
+The lower level layer will expose the following API
+
+\begin{API}
+  \function{New_Connection} Create a new connection
+  \function{New_Input(Connection)} Open a new input port
+  \function{Set_Timeout(Input)} Set a timeout over an input port.  A
+  new event will be raised if the time between packets is greater than
+  the timeout.
+  \function{New_Channel(Connection)} Open a new channel (with its own
+  reduction details)
+  \function{New_Destination(Channel, Address)} Associate a new
+  destination to channel \ttt Channel!
+  \function{Close_Destination(Destination)}
+  \function{Close_Channel(Channel)}
+  \function{Close_Input(Port)}
+  \function{Close_Connection(Connection)}
+  \function{Receive(Connection, Multimedia_Packet)} Wait for a new multimedia
+  packet to arrive
+  \function{Send(Connection, Medusa_Packet)} Send a new packet over
+  the connection.  Note that while \ttt Receive! returns a multimedia
+  packet, \ttt Send! expects a packet in the \medusa- format, i.e., a
+  packet already processed by the splitter function.  
+  \function{Register_Event_Handler} Register a callback function to be
+  called whenever an event happens.  If convenient, the API could have
+  different \ttt Register_*! functions for different types of events.
+\end{API}
+%
+Note that in the API above there is no way to \emph{ask} to another
+peer for data (i.e., there is no \ttt Pull_From!) method.  This
+because the \ttt Pull_From! procedure will be implemented by means of
+procedures external to the lower layer.
+
+\subsection{Higher layer}
+\label{sub:2.1;transport_layer}
+
+The higher layer is a control layer which is not strictly necessary
+for the application.  Nevertheless, by specifying it we offer a
+standard way to control the lower layer.
+
+The higher layer protocol proposed in this document is based on a
+RTSP-like (or HTTP-like) structure, that is, the typical message has
+the format
+
+\begin{verbatim}
+  message      = start-line 
+                 *(message-header CRLF)
+                 CRLF
+                 [ message-body ]
+
+  start-line   = request-line | reply-line
+  request-line = method  SP URI SP version
+  reply-line   = version SP status-code SP Reason CRLF
+  version      = <protocol name. To be defined>
+\end{verbatim}
+
+The methods available are
+
+\begin{itemize}
+  \item \ttt SEND!
+  \item \ttt OPTIONS!
+\end{itemize}
+
+\subsubsection{\ttt SEND! method}
+\label{subsub:2.1.0;transport_layer}
+
+Used to ask a peer to send a stream to another peer.  The address of
+the destination peer is transmitted in the Header section. The header
+section could include an authorization field in order to be sure that
+the request is legitimate.  
+
+\begin{example}
+  Consider, for example, the case of a live event streaming.  In such
+  a case the user could connect to a central server which holds the
+  connection informations about the streaming.  The connection can be
+  made via https, in order to be sure of the server identity.  The
+  server can require the user to authenticate itself.   
+
+  The server generates a random seed that sends to the user with the
+  other session informations.  When a user asks for a  possible
+  peer, the server reply with two values: the peer address (typically
+  IP address + port) and an ``authorization'' value obtained by
+  hashing the user address, the peer address, the random seed
+  which was sent to the peer and the number of streams that the user
+  is authorized to receive from the peer.  The node which receives the
+  SEND command does a similar hash and check that the two values are
+  equal. 
+
+  If this type of protection was not present, several threats would be
+  possible 
+  \begin{enumerate}
+    \item A user could ask for a large number of streams, saturating
+    the peer output bandwidth, causing a DoS.
+    \item The number of stream a user is entitled to receive could
+    depend on the subcription fee payed by the user.  A user could
+    subscribe at the lowes fee, then ask for more streams.
+    \item Two users could collaborate to pay only one subscription.
+    To such an end, one user subscribes and connect to the central
+    server.  After obtaining the peer infos, the user ask to each node
+    to send data both to the user itself and to its friend (which
+    receive the data without paying and without using output
+    bandwidth).
+   \item A user could ask to a peer to send many streams to, say, the
+   DNS port of a DNS server, causing, possibly, a DoS.
+  \end{enumerate}
+\end{example}
+
+\subsubsection{OPTIONS method}
+\label{sub:2.2;transport_layer}
+
+Used to configure the node.  It could be used to transmit, for
+example, the stream profile and to fix the number of output channels,
+the number of output ports and the reduction factor corresponding to
+each pair (component, channel).
+
+\appendix
+
+\section{Stream description format}
+\label{sect:1;transport_layer}
+
+In this section we formally describe the XML format used to describe
+the stream structure.  The description is given in \ttt RELAX
+NG!\footnote{http://www.relaxng.org/} 
+compact syntax \cite{Relax-compact}
+
+
+\begin{verbatim}
+# Starting node
+start = Stream
+
+#
+# A stream is collection of optional profile definitions
+# followed by one or more packet class definitions
+#
+Stream = element stream { 
+   attribute profile { NMTOKEN } |
+   ( attribute name { NMTOKEN }?,
+     Definition *,
+     Packet + )
+}
+#
+# Example of declaration of a stream with a well-known
+# profile
+#
+#  <stream profile="basic" />
+#
+#
+# Example of a possible MPEG-like stream.  It is supposed
+# that the packet profiles 'MPEG:I',  'MPEG:P'
+# are well-known, while the definition for B packets is contained
+# in a remote resource.
+#
+#  <stream name='mpeg'>
+#    <packet profile='MPEG:I' />
+#    <packet profile='MPEG:P' />
+#    <packet url='http://www.example.com/profiles/MPEG_B.xml' />
+#  </stream>
+#
+
+#
+# A definition can define both a packet profile,  a component
+# profile or a procedure.
+#
+Definition = element define {
+    attribute name { NMTOKEN },
+    (Packet | Component | Procedure)
+}
+#
+# Example:
+# <define name='MDX:basic'>
+#   <component>
+#     <binary />
+#     <encoder name='MDX:trivial' />
+#   </component>
+# </define>
+#
+#
+
+#
+# A packet class is specified by giving its 
+# profile name or by specifying its components
+# and how to recover the packet from the 
+# components
+#
+Packet = element packet {
+   attribute profile { NMTOKEN } |
+   attribute url     { anyURI }  |
+   (Component +, Join, Split?)
+}
+#
+# Example of definition of a packet with two components.
+# The first component is of analog type and it must be
+# encoded with a DCT-based encoder.  The second component
+# is a binary one and it has the profile MDX:basic defined
+# above.  In order to merge the two components in a single
+# multimedia packet, the node must use the Ruby procedure
+# stored in glue.rb.
+#
+# <packet>
+#   <component>
+#     <analog />
+#     <encoder name='DCT' />
+#   </component>
+#   <component profile='MDX:basic' />
+#   <join>
+#     <procedure language='ruby'> 
+#        <external>http://www.example.com/glue.rb</external>
+#     </procedure>
+#   </join>
+# </packet>
+# 
+
+Join = element join {
+   attribute name { NMTOKEN } |
+   Procedure
+}
+
+Split = element split {
+   attribute name { NMTOKEN } |
+   Procedure
+}
+
+#
+# A component is defined by specifying its profile or
+# by declaring its type (Analog or Binary) and the
+# corresponding encoder
+#
+Component = element component {
+   attribute profile { NMTOKEN } |
+   attribute url     { anyURI }  |
+    (Component_Type, Encoder, Decoder ?)
+}
+
+Component_Type = element analog | binary { empty }
+
+Encoder = element encoder {
+   attribute name { NMTOKEN } |
+   Procedure
+}
+
+Decoder = element decoder {
+   attribute name { NMTOKEN } |
+   Procedure
+}
+
+#
+# Procedure definition.  In order to specify a procedure it is
+# necessary to specify how to interpret it (with the attribute
+# language) and its code.  The code can be specified by 
+# inserting it "inline" (in BASE64 format) or by giving an 
+# URL to access it.
+#
+Procedure = element procedure {
+      attribute language { NMTOKEN },
+      (Inline_Code | External_Code)
+}
+
+Inline_Code   = element inline   { base64Binary }
+External_Code = element external { anyURI }
+#
+# Example:
+# <procedure language='javascript'>
+#    <external>http://www.example.com/src/encoder.js</external>
+# </procedure>
+#
+\end{verbatim}
+
+
+\bibliographystyle{alpha}
+\bibliography{medusa_biblio}
+
+\end{document}

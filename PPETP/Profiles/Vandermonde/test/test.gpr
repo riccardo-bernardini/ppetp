@@ -1,0 +1,22 @@
+project Test is
+
+   for Object_Dir use "obj";
+   for Source_Dirs use (".", "..\", "..\..\", "..\..\..\", "..\..\..\Packets", "..\..\Basic", "..\..\..\low-level-lib\Test_Lib", "..\..\..\low-level-lib\Algebra", "..\..\..\low-level-lib\Algebra\Galois", 
+"..\..\..\low-level-lib\Utilities", "..\..\..\low-level-lib\Algebra\Matrix", "..\..\..\low-level-lib\Parsing_Buffers", "..\..\..\low-level-lib\Smart_Pointers", "..\..\..\low-level-lib\Integer_Lists", 
+"..\..\..\low-level-lib\Network", "..\..\..\low-level-lib\Integer_Lists");
+   for Main use ("test_disentangler_vandermonde.adb", "prova_code.adb");
+
+   package Builder is
+      for Default_Switches ("ada") use ("-s");
+   end Builder;
+
+   package Compiler is
+      for Default_Switches ("ada") use ("-gnatE", "-fstack-check", "-g", "-gnata", "-gnatVd", "-gnatwz");
+   end Compiler;
+
+   package Linker is
+      for Default_Switches ("ada") use ("-fprofile-generate");
+   end Linker;
+
+end Test;
+

@@ -1,0 +1,34 @@
+project Main_Server is
+
+   type Mode_Type is
+      ("Production", "Debug");
+   Mode : Mode_Type := external ("BUILD", "Debug");
+
+   case Mode is
+
+      when "Debug" =>
+         for Object_Dir use "obj";
+         for Source_Dirs use (".", "..\lib", "..\..\..\DB\Ada", "..\..\..\lib\Ada", "..\..\..\lib\Ada\generic");
+
+      when "Production" =>
+
+   end case;
+
+   package Compiler is
+
+      case Mode is
+
+         when "Debug" =>
+            for Default_Switches ("ada") use ("-g", "-gnato", "-fstack-check", "-gnatVa");
+
+         when "Production" =>
+            for Default_Switches ("ada") use ("-gnatp", "-O2");
+      end case;
+   end Compiler;
+
+   package Ide is
+      for Vcs_Kind use "CVS";
+   end Ide;
+
+end Main_Server;
+

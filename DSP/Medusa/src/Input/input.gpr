@@ -1,0 +1,4 @@
+with "../medusa_basic";
+
+project Input is
+end Input;

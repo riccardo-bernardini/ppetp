@@ -1,0 +1,13 @@
+project Test is
+
+   for Object_Dir use "obj";
+   for Source_Dirs use ("../", ".", "../../../Test_Lib");
+
+   package Compiler is
+      for Default_Switches ("ada") use ("-g", "-gnata", "-gnatE");
+   end Compiler;
+
+   for Main use ("bignum_test.adb");
+
+end Test;
+

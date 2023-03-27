@@ -1,0 +1,18 @@
+project Test is
+
+   for Object_Dir use "test/obj";
+   for Exec_Dir use "test";
+   for Main use ("server_main.adb", "client.adb");
+   for Source_Dirs use (".", "../../", "../../API", "../../Auth", "../../Auth/Profiles", "../../Channels", "../../Configuration", "../../Packets", "../../Profiles", "../../Profiles/Basic", "../../Profiles/Vandermonde", 
+"../../Profiles/Vandermonde/test", "../../Queues", "../../Sessions", "../../Synthesis_Queue", "../../Targets", "../../Task_Control", "../../Task_Input", "../../Task_Main", "../../Task_Output", "../../Transmitters", 
+"../../../../../ada/xmlada-gpl-3.1/dom", "../../../../../ada/xmlada-gpl-3.1/input_sources", "../../../../../ada/xmlada-gpl-3.1/sax", "../../../../../ada/xmlada-gpl-3.1/schema", 
+"../../../../../ada/xmlada-gpl-3.1/unicode", "../../low-level-lib/Network", "../../low-level-lib/Mailboxes", "../../low-level-lib/Parsing_Buffers", "../../low-level-lib/Smart_Pointers", 
+"../../low-level-lib/Smart_Pointers", "../../low-level-lib/Utilities", "../../low-level-lib/Algebra/Galois", "../../low-level-lib/Algebra/Matrix", "../../low-level-lib/Algebra", "../../low-level-lib/Protected_Tables", 
+"../../low-level-lib/Integer_Lists", "../../Configuration/From_pseudo_PPETP", "../../low-level-lib/HTTP_Client", "../../../../pseudo PPETP");
+
+   package Builder is
+      for Default_Switches ("ada") use ("-s");
+   end Builder;
+
+end Test;
+

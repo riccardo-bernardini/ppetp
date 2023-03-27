@@ -1,0 +1,147 @@
+Il "pastone di processi" che implementa Medusa usa una sorta di
+"database centralizzato" (tanto per usare un nome pomposo...) dove
+vengono memorizzate informazioni quali le porte per comandi/dati
+aperte dai singoli processi.  Queste brevi note descrivono il
+protocollo per l'accesso al database centralizzato.
+
+=============================================================
+== Sono un processo e voglio accedere al DB.  Come faccio? ==
+=============================================================
+ 
+Il server del DB (altro nome pomposo...) e` in ascolto su una porta
+TCP del computer locale.  Il numero della porta del server viene
+comunicato "in qualche modo" (al momento attuale sulla linea di
+comando) ad ognuno dei sottoprocessi.  Per accedere al DB devi
+
+  a) contattare il server sulla porta che sai
+  b) mandargli il comando e chiudere la connessione in _scrittura_ (in
+     questo modo il server sa che non hai altro da dire)
+  c) aspettare la risposta del server
+
+======================================
+== Quali comandi sono riconosciuti? ==
+======================================
+
+Due soli: GET e SET
+
+  * Comando SET 
+
+    Sintassi:  
+        SET <VAR_NAME> <VALUE>  
+
+    Decrizione:
+        Associa alla variabile <VAR_NAME> il valore <VALUE> dove
+        
+         - <VAR_NAME> contiene solo caratteri alfanumerici, l'underscore e
+           il punto (es. MMEDIA.DATA_PORT)
+        
+         - <VALUE> e` una stringa codificata nel formato "a lunghezza
+           prefissa" descritto + avanti (non so se esista un nome
+           ufficiale e questo me lo sono inventato al volo) 
+        
+         - SET, <VAR_NAME> e <VALUE> sono separati da un numero
+           arbitrario di spazi
+
+    Esempi:
+        SET MMEDIA.DATA_PORT  5:33421
+        SET menu_di_domani  24:penne alla pescatora 10$
+
+  * Comando GET
+
+    Sintassi:  
+        GET <VAR_NAME> [<VAR_NAME_2> ...] [<TIMEOUT>]
+
+    Decrizione:
+        Restituisce i valori associati alle variabili <VAR_NAME>,
+        <VAR_NAME_2>, ...  Se i valori non gia` sono presenti nel DB,
+        aspetta fino a quando qualcuno non li inserisce nel DB.
+
+        Se l'ultima "parola" (stringa di caratteri non-blank) sulla
+        riga e` un numero (intero o reale, ma non in notazione 'e'),
+        il suo valore viene intepretata come una richiesta di
+        timeout. Se allo scadere di <TIMEOUT> secondi alcune variabili
+        sono ancora non disponibili la "GET" viene abortita.
+        
+    Esempi:
+        GET MMEDIA.DATA_PORT  
+        GET P2P.COMMAND_PORT P2P.DATA_PORT 1.5
+
+==============================
+== Cosa risponde il server? ==
+==============================
+
+Risposte comuni per entrambi i comandi
+--------------------------------------
+
+La prima cosa che risponde il server e` un codice di "stato"
+composta come segue
+
+  - La prima parte e` un "codice di errore" rappresentato da un numero
+    a tre cifre
+
+  - La seconda parte e` una descrizione "umana" del codice numerico
+
+  - La linea di stato e` terminata dal carattere LF (10 o "\r")
+
+I codici di errore attualmente utilizzati sono
+
+  000 OK
+    Tutto e` andato bene
+
+  001 MALFORMED
+    Il comando non ha la sintassi corretta
+
+  002 UNKNOWN 
+    Alcune variabili richieste con GET non sono presenti nel
+    DB. Questo errore viene restituito solo in seguito allo scadere di
+    un timeout
+
+Risposte per il comando GET
+---------------------------
+
+In seguito ad una risposta "000 OK" il server trasmette i valori delle
+variabili richieste, codificando ogni valore nel formato a lunghezza
+prefissa.
+
+
+========================================================
+== Ma kekatze' 'sto "formato a lunghezza prefissa"?!? ==
+========================================================
+
+E` molto semplice: la stringa viene codificata concatenando 
+
+  1. La lunghezza della stringa espressa in decimale
+  2. Il carattere ':'
+  3. La stringa stessa
+
+Per esempio, la stringa "pippo" verrebbe codificata con"5:pippo",
+mentre la stringa "penne alla pescatora 10$" verrebbe codificata con
+"24:penne alla pescatora 10$"
+
+In fase di decodifica si procede come segue
+
+  1. Cerca nella stringa da codificare la prima sequenza di cifre
+     seguita da un ':'. Nel mio codice Ruby uso l'espressione regolare 
+
+                        /[^0-9]*([0-9]+):/
+
+  2. Estrai la lunghezza della stringa
+  3. Estrai i caratteri.  Se non ci sono abbastanza caratteri la
+     stringa non e` ben formata.
+
+Per esempio, la decodifica ``completa'' della stringa
+
+  "un po' di rumenta 4:ciao 10:tanti baci  questo viene  ignorato 0:  1:x"
+
+restituirebbe le stringhe
+
+  "ciao"
+  "tanti baci"
+  "" (la stringa vuota codificata con "0:")
+  "x"
+
+Il vantaggio di questo tipo di codifica e` che e` mostruosamente
+semplice, non c'e` bisogno di nessuna regola particolare per trattare
+i caratteri speciali e non bisogna fare attenzione a cosa mettiamo tra
+una stringa e l'altra (spazi/tab/CR/LF...)
+

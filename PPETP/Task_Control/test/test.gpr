@@ -1,0 +1,17 @@
+project Test is
+
+   for Object_Dir use "obj";
+   for Source_Dirs use (".", "../", "../../", "../../Packets", "../../Network", "../../Mailboxes", "../../Test_Lib");
+
+   package Compiler is
+      for Default_Switches ("ada") use ("-ftest-coverage", "-fprofile-arcs", "-gnata");
+   end Compiler;
+
+   package Linker is
+      for Default_Switches ("ada") use ("-fprofile-generate");
+   end Linker;
+
+   for Main use ("test_sent_db.adb");
+
+end Test;
+

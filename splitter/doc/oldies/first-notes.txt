@@ -1,0 +1,45 @@
+These are just a bunch of notes that I wrote at the beginning of this
+project.  Yes, they are in Italian, that is because they were meant as
+just a "sketchbook" of ideas...  I am keeping this file only for
+hystorical reasons...
+
+
+Appunti in ordine sparso... giusto un flusso di pensieri (lasciate ogni
+speranza o voi che entrate...)
+
+L'idea \`e di scrivere un programma che si occupi dello "splitting" di
+flussi RTP sulla base dell'SSRC.  Ogni volta che il programma "vede"
+un nuovo SSRC, apre una nuova porta UDP locale e lancia un viewer per
+la decodifica.  Onde rendere il programma il pi\`u indipendente
+possibile dal tipo di viewer, pensavo ad una struttura di questo tipo
+
+  1) Un programma Ada che esegue lo splitting
+
+  2) Uno script Ruby che lancia il viewer
+
+Pi\`u precisamente, il comportamento sarebbe il seguente
+
+  1) Un utente lancia lo script Ruby indicando sulla linea di comando
+     la porta UDP su cui arriveranno i pacchetti RTP
+
+  2) Lo script Ruby 
+
+     2.1) Si mette in ascolto su una porta TCP
+
+     2.2) Lancia lo splitter Ada, passandogli 
+
+       a) La porta comunicata dall'utente
+       b) La porta TCP
+
+   3) Lo splitter Ada
+
+       * Si mette in ascolto sulla porta UDP
+
+       * Ogni volta che vede un nuovo SSRC 
+          - Sceglie una porta UDP di destinazione
+          - Chiede allo script Ruby di lanciare un nuovo player che
+            dovr\`a ascoltare sulla nuova porta
+
+       * Ogni volta che non riceve pi\`u pacchetti con un certo SSRC
+          - Chiede allo script di uccidere il player
+

@@ -1,0 +1,1860 @@
+%-*- mode: latex; iso-accents-mode: nil;  ispell-local-dictionary: "english" -*-
+\iffalse
+\documentclass{rfc}
+\else
+\documentclass[a4paper,10pt]{medusabook}
+\newcommand{\fullname}[1]{#1}
+%\newcommand{\organization}[1]{\\#1}
+%\newcommand{\address}[1]{}
+\fi
+\newcommand{\ttbf}[1]{\texttt{\bfseries #1}}
+%\documentclass[a4paper,11pt]{article}
+%
+% text width/height/offset
+%
+%\textwidth=16.3cm         %%% valore "vero" = 16cm
+%\textheight=24.6cm      %%% valore "vero" = 24.5
+%\hoffset=-1.64cm
+%\voffset=-1in
+%%\renewcommand{\baselinestretch}{1.62}
+%\renewcommand{\baselinestretch}{1.48} %% Valore ``vero'' per 2interl.= {1.55}
+%
+% Standard packages...
+%
+\def\ttt{\catcode`\_=12 \tttii}
+\def\tttii#1!{{\tt #1}\catcode`\_=8{}}
+
+\usepackage{amsmath}
+\usepackage{amsbsy}
+\usepackage{amsthm,amsfonts}
+\usepackage{epsf,epsfig}
+\usepackage{times}
+\usepackage{srcltx}
+\usepackage[a4paper,margin=1.2in]{geometry}
+\voffset=-0.5in
+%
+%
+%
+%%\newtheoremstyle{corto}{no}{n}{\bfseries}{\bfseries}{.}
+%%   {\itshape}
+%%   {0.25\baselineskip}
+%%   {0.25\baselineskip}
+%%\theoremstyle{corto}
+%% \addtolength{\theorempreskipamount}{-15mm}
+%% \addtolength{\theorempostskipamount}{-15mm}
+%
+%
+%
+%
+% Standard definitions...
+%
+\input{macrodef}
+%\setlength{\nproofskip}{0pt}
+%
+% Local definitions
+%
+%
+% Title informations
+%
+\title{Peer-to-Peer Epi-Transport Protocol (\ppmtp;)}
+
+\author{
+\fullname{Riccardo Bernardini}
+\organization{DIEGM -- University of Udine}
+\address{street=Via delle Scienze, 208;city=Udine;code=33100;country=IT;email=bernardini@uniud.it}}
+
+%
+% True document
+%
+\begin{document}
+\maketitle
+
+\tableofcontents
+
+\chapter{Introduction}
+\label{sect:intro;driver}
+
+Due parolae (alla latina) di descrizione (molto) informale in
+italiano\ldots
+
+\section{Perch\'e \ppetp-?}
+In principio c'era \medusa-, un sistema ``completo'' per la
+trasmissione/ricezione in streaming di video live su reti P2P.  Poi
+scoprii l'RTSP (Real Time Streaming Protocol) e SDP (Session
+Description Protocol) e cominciai una revisione del protocollo
+server/client di \medusa- per avvicinarlo a questi due protocolli
+gi\`a pronti.  Cos\`\i{} facendo mi resi conto che se l'idea di
+\medusa- fosse stata fatta scendere a livello di trasporto, sarebbe
+stato possible integrare facilmente \medusa-  con gli strumenti
+attualmente disponibili, semplicemente aggiungendo al software
+esistente un modulo in grado di interfacciarsi col nuovo protocollo di
+trasporto.  
+
+\section{Perch\'e ``epi''?} L'idea \`e che \ppetp- dovrebbe essere
+visto dal livello applicativo come una specie di protocollo di
+trasporto, anche se non \`e un vero livello di transporto, poich\'e si
+appoggia a sua volta su protocolli di trasporto di livello pi\`u
+basso.  Ecco quindi l'uso del prefisso \emph{epi} (sopra).
+
+
+\section{Cosa trovo in questo documento?}
+In questo papero descrivo una prima bozza del \ppetp-.  La descrizione
+\`e divisa in diverse sotto-descrizioni
+
+\begin{description}
+\item[Protocollo di trasporto] La descrizione del protocollo di
+  trasporto vero e   proprio viene divisa in due sotto-descrizioni
+\begin{enumerate}
+  \item
+    La prima sotto-descrizione specifica il formato dei pacchetti
+    scambiati tra i nodi, ma  non come avviene la ``riduzione'' dei
+    pacchetti da trasmettere.  
+  \item
+    La seconda sotto-descrizione descrive come 
+    ridurre e ricostruire i pacchetti.
+\end{enumerate}
+Tale descrizione in due tempi permette di usare diversi algoritmi di
+riduzione con la stesso protocollo di epi-trasporto.  Si osservi che
+questa tecnica di ``descrizione in due tempi'' \`e simile a quella
+usata per l'RTP \cite{rfc3550} (che ha bisogno di essere completato
+dalla descrizione in un \emph{profilo} specifico) e il DCCP
+\cite{rfc4336} (che ha bisogno di essere completato dalla descrizione
+dell'algoritmo usato per il controllo del rate). 
+Per analogia con quanto fatto nell'RTP, chiameremo la descrizione
+degli algoritmi di riduzione \emph{profilo}.
+
+\`E importante osservare che non \`e necessario che il tipo di
+elaborazione introdotta dal profilo sia di tipo ``riduttivo,'' ma
+pu\`o essere di qualsiasi tipo.  Per esempio, un profilo diverso da
+quello descritto qui potrebbe trasmettere sulla rete combinazioni
+lineari di pacchetto, nello spirito del  \emph{network coding}.
+
+\item[Protocollo di controllo] La descrizione del protocollo di
+trasporto non specifica come i nodi della rete P2P vengano in contatto
+tra loro, poich\'e il problema della formazione della rete appartiene
+ad un livello che non \`e quello di trasporto (in maniera analoga, le
+specifiche di UDP non spiegano come un nodo venga conoscenza dell'IP
+di un altro nodo).
+
+A completamento della descrizione del protocollo di trasporto,
+introduciamo un protocollo di controllo del collegamento di nodi
+appartenenti alla stessa rete P2P.  Tale protocollo \`e simile
+all'HTTP, solo con un diverso insieme di metodi e intestazioni.  Lo
+scopo del protocollo di trasporto \`e di permettere ai nodi di venire
+in contatto, di autenticarsi, di negoziare eventuali parametri di
+connessione e cos\`\i{} via.
+\item[Estensioni a RTSP] A scopo dimostrativo descriviamo brevemente
+  come si pu\`o estendere il valore dell'intestazione \ttt Transport!
+  di RTSP per includere \ppetp- come possibile opzione per il
+  trasporto.
+\item[Proposta di API]  Una proposta per una possibile API per
+  l'accesso a \ppetp- da programma.
+\end{description}
+%
+\section{Esempio di sessione}
+
+Un breve esempio di come si svolgerebbe una sessione di streaming
+video su \ppetp-
+
+\begin{enumerate}
+\item
+Un utente che vuole accedere ad un certo contenuto video fa partire il
+suo player preferito e gli comunica l'URL del video.
+\item
+Il player contatta il server ed inizia una fase di colloquio.
+\item
+Per prima cosa (in risposta ad un \ttt DESCRIBE! RTSP o tramite una
+risposta HTTP) il server manda la descrizione in formato (diciamo) SDP
+con le istruzioni per accedere al video.  Se un filmato deve essere
+trasmesso su PPETP, l'attributo SDP \ttt m=! specificher\`a il
+protocollo di trasporto \ttt RTP/PPETP! (con porta 0).
+\item
+In risposta alla descrizione SDP, il client apre una sessione (o due
+adiacenti) PPETP contatta il server con \ttt SETUP! specificando
+nell'attributo \ttt client_port! dell'header \ttt Transport! il numero
+della/e porta/e PPETP aperte.
+\item
+Il server, dopo un'eventuale autenticazione, accetta il \ttt SETUP!.
+\item
+Il client, in seguito all'accettazione, risponde con un \ttt PLAY!  A
+questo punto possono darsi due scenari differenti
+\begin{description}
+  \item[Il server fa tutto] In risposta al metodo \ttt PLAY! il server
+  contatta i peer che dovranno servire il nuovo nodo e tramite il
+  protocollo di controllo comunica loro la richiesta di trasmettere un
+  sotto-stream al nuovo arrivato.
+  \item[Il client si arrangia] In risposta al metodo \ttt PLAY! il
+  server risponde con una lista di indirizzi di peer a cui il nodo
+  deve rivolgersi.  Il nodo contatta i peer suggeriti dal server e
+  tramite il protocollo di controllo instaura una comunicazione.
+\end{description}
+Qualunque sia lo scenario, il server comunica nel corpo della risposta
+al \ttt PLAY! le seguenti informazioni
+\begin{itemize}
+  \item Il numero di canali da aprire, quali profili usare ed
+  eventuali parametri dei profili.
+  \item Eventuali chiavi per l'autenticazione dei comandi \ttt
+  Send_Data! e \ttt Receive_Data!
+\end{itemize}
+\item
+A questo punto gli strati \ppetp- dei nodi appartenenti alla rete P2P
+comunicano tra loro.  Gli applicativi che si appoggiano su \ppetp-
+leggerano i pacchetti in arrivo facendo semplicemente delle \ttt recv!
+sui ``socket'' \ppetp-.  Da questo momento in poi, dal punto di vista
+dell'applicazione, \ppetp- diventa praticamente indistinguibile da
+qualsiasi altro protocollo di trasporto non affidabile (come l'UDP).
+\end{enumerate}
+%
+In \fref{cpptp} \`e possibile vedere uno schema di una possibile
+applicazione basata su \ppetp-.
+
+\begin{figure}
+\centerline{\unafigura{cpptp}}
+\caption{Esempio di applicazione basata su \ppetp-.
+\label{fig:cpptp}}
+\end{figure}
+%
+
+\section{Perch\'e \`e interessante?}
+\label{sub:intro.0;driver}
+
+Il motivo per cui potrebbe essere interessante portare \medusa- a
+livello di trasporto \`e che in questo modo qualunque applicazione e
+qualunque tecnica di codifica potrebbe essere portata su P2P,
+semplicemente aggiungendo il codice necessario ad interfacciarsi con
+\ppetp-. Schemi a descrizione multipla, scalabili, con FEC ed
+eventuali loro combinazioni convesse implementati in programmi in
+grado di comunicare su UDP potrebbero essere portati su P2P con un
+semplice ``cambio di libreria.'' 
+
+\section{Appunti}
+\label{sect:intro.0;transport_layer}
+
+Qualche idea in ordine sparso\ldots{} Non so dove scriverle e me le
+appunto qui per non dimenticarmente
+
+\begin{itemize}
+\item
+Una sessione PPETP \`e individuata dalla sua \emph{porta \ppetp-} 
+che coincide con la porta UDP di controllo.  Anche l'applicazione
+semplicemente ``apre una porta \ppetp-.''
+\begin{commento}[Appunto vecchio e forse non pi\`u valido]
+Vale la seguente equazione
+%
+\begin{equation}
+\label{eq:0;transport_layer}
+\text{porta PPETP} = (2^{16}/8) \cdot \text{canale} + (\text{porta UDP}-1024)
+\end{equation}
+%
+Ogni nodo ha quindi al massimo 8 canali di uscita e le porte UDP
+utilizzabili vanno da 1024 a $1024 + 2^{16}/8 = 9216$.
+\end{commento}
+%
+\item
+Ad ogni canale \`e assegnato uno ed uno solo profilo di elaborazione
+con il suo insieme di parametri.  Tipicamente il server dir\`a al nodo
+quanti canali aprire, quali profili usare e il valore di (alcuni)
+parametri. 
+\item
+A livello di applicazione deve essere possibile chiedere di aprire il
+canale con un certo numero ed assegnarli profilo e parametri.  Devo
+quindi rivedere l'API.
+\item
+Sarebbe possibile, con qualche mastruzzo del terz'ordine, creare
+un'API C che mappa le porte \ppetp- in socket? (Forse s\`\i{},
+giocando sporco con le macro\ldots{} ma vorrei evitare\ldots)
+\end{itemize}
+%
+
+\chapter{Transport protocol}
+\label{sect:0;driver}
+
+\section{Introduction}
+\label{subsub:0.0.1;driver}
+
+\paragraph{The \ppetp- model} \ppetp- supposes that the P2P network is
+made of several nodes which communicate with each other.  The nodes in
+a \ppetp- network are interested in the same type of \emph{content}
+which we suppose was split in packets from a \emph{root server}.  The
+packets transmitted from peer to peer do not necessarily coincide with
+the packets which make the original content.  For example, packets can
+be \emph{reduced} with the approach described in
+\cite{bernardini08:dcc08}, in order to allow each node to use an
+upload bandwidth smaller than the download bandwidth.  Alternatively,
+packets can be processed by network coding techniques.  It is
+reasonable to assume that the processing goal will be typically an
+increased reliability or transmission efficiency.
+
+In a \ppetp- network each node receives one or more input stream from
+the other nodes, recovers the packets and retransmit them to the other
+nodes after having processed them.  Note that, depending on the chosen
+processing procedure, one could need to specify some \emph{processing
+  parameters} in order to uniquely identify the processing carried out
+by a node.  For example, the processing described in
+\cite{bernardini08:dcc08} requires the specification of a Galois field
+$\gf{2^n}$, an element $b\in \gf{2^n}$ and a positive integer $R$
+called in \cite{bernardini08:dcc08} \emph{reduction factor}.  The
+\ppetp- does not describe how the processing parameters are chosen by
+each node.
+
+The \ppetp- description is split into two parts
+
+\begin{description}
+\item[Pure Transport Level (PTL)] This part describes how data are exchanged
+  between nodes (e.g., handshaking procedures and packet formats), but
+  not how the packet processing is done.  The description of packet
+  processing procedures is demanded to companion documents describing
+  \ppetp- \emph{profiles}
+\item[Profile description (PD)] This part describes how packet are
+  processed and how the processed data is embedded in the PTL
+  packets. Note that while there is only one PTL specification , it is
+  possible to devise that in a future several PD will be available
+  (e.g. a PD based on the approach of \cite{bernardini08:dcc08} and a
+  PD based on a network coding approach).
+\end{description}
+%
+Note that such two-step description allows one to adopt new processing
+procedure without changing the basic transport level.  A similar
+two-step approach is used also in the description of the Real-time
+Transport Protocol (RTP) \cite{rfc3550} and of the Data Congestion
+Control Protocol (DCCP) \cite{rfc4336}.
+
+\section{Underneath transport protocol}
+\label{subsub:0.0.0;driver}
+
+\ppetp- is not a transport protocol by itself and it needs a true
+transport protocol to transmit packets between peers.  It is not
+necessary that the transport protocol used by \ppmtp; grants for the
+delivery of every packet nor for the preservation of transmission
+order.  For example, UDP and DCCP could be used as a transport
+protocol for \ppmtp;.
+
+\section{Type of packets}
+\label{sub:0.2;driver}
+
+
+The packets exchanged by \ppetp- nodes can be classified as \emph{data
+packet} or \emph{control packet}.  Data packets are the most common
+ones, they carry the processed version of the original content packets
+and require no acknowledge.  Control packets are typically used during
+a session setup and they require an acknowledge reply.
+
+Each packet (be it of data or control type) carry a 20-bit \emph{sequence
+number} or \emph{timestamp}.  The sequence number \emph{together with
+the packet type and the source and destination peers} uniquely
+identify the packet.  Note that sequence numbers are \emph{not} unique
+on a \emph{global} level and that peer A can send to peer B a control
+packet and a data packet, both with the same sequence number.  The
+reason for allowing a data and a control packet sharing the same
+sequence number is that in the multimedia streaming context one can
+expect the timestamp associated with a given data packet to be related
+with the temporal information associated to the corresponding
+multimedia packet.  If control and data packet shared the same
+sequence number space, the transmission of a control packet would
+destroy the correspondence between sequence number and temporal
+information.   
+
+Sequence number are strictly sequential and, similarly to the
+requirements in the RTP specification \cite{rfc3550}, it is suggested
+the initial value of this field SHOULD be random (unpredictable) to
+make known-plaintext attacks on encryption more difficult.
+
+\subsection{Data packet format}
+\label{subsub:0.0.2;driver}
+
+The data packets have the following format
+
+\begin{itemize}
+  \item
+    A fixed 32-bit header with the following structure
+
+    \begin{verbatim}
+      type Unsigned_2  is mod 2**2;   --  2-bit unsigned int
+      type Unsigned_3  is mod 2**3;   --  3-bit unsigned int
+      type Unsigned_4  is mod 2**4;   --  4-bit unsigned int
+      type Unsigned_20 is mod 2**20;  -- 20-bit unsigned int
+
+      type Data_Header is
+         record
+            Version   : Unsigned_2;
+            Control   : Boolean;       -- False for data packets
+            Inline    : Boolean;
+            Padding   : Boolean;
+      
+            Marker    : Unsigned_3;
+      
+            Profile   : Unsigned_4;
+            Timestamp : Unsigned_20;
+         end record;
+
+
+       -- Structure of a packet exchanged between peers
+       for Data_Header'Bit_Order use High_Order_First;
+       for Data_Header use
+          record
+             Version    at 0 range 0..1;
+             Control    at 0 range 2..2;
+             Inline     at 0 range 3..3;
+             Padding    at 0 range 4..4;
+             Marker     at 0 range 5..7;
+
+             Profile    at 1 range 0..3;
+             Timestamp  at 1 range 4..23;
+          end record;
+    \end{verbatim}
+\notainterna{La descrizione Ada-like \`e vecchia, i disegni sono aggiornati}
+  \item
+    An optional header which depends on the chosen profile. This part
+    is present only if the \ttt Inline! bit is set.
+  \item
+    The data payload, possibly padded (if the \ttt Padding! bit is set)
+\end{itemize}
+
+A pictorial representation of the data header is given in \fref{data-header}.
+
+\begin{figure}
+\begin{center}
+\begin{verbatim}
+ 0                   1                   2                   3
+ 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
++-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+|V=1|C|I|P|Flags|Channel|            Sequence number            |
++-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+|                          Source ID                            |
++-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+:                           Payload                             :
++-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+:                                                               :
+:                Signature (0, 32, 64 or 128 bit)               :
+:                                                               :
++=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
+\end{verbatim}
+\end{center}
+\caption{\ppetp- data header \label{fig:data-header}}
+\end{figure}
+
+
+The header fields have the following meaning
+
+\begin{description}
+\label{description:4.0.0;transport_layer}
+\item[Version (V): 2 bit]
+This field identify the protocol version.  This document
+corresponds to \ttt V=01!.
+\item[Control (C): 1 bit] This bit is always 0 for data packets.
+\item[Inline  (I): 1 bit]
+If this bit is 1, details about the reduction process are specified in
+the profile-specific header which follows the first 32-bit word.  
+\item[Padding (P): 1 bit] Similarly to the RTP specification
+\cite{rfc3550}, if this bit is set, the packet contains one or more
+additional padding octets at the end which are not part of the
+payload.  The last octet of the padding contains a count of how many
+padding octets should be ignored, including itself.
+\item[Flags (F): 3 bit] Similarly to the RTP
+specification \cite{rfc3550}, the interpretation of this field is defined by a
+profile.
+\item[Channel : 4 bit] The channel number.
+\item[Sequence number : 20 bit] A sequence number which increments for every
+  packet sent by the root source. Packets with the same timestamp
+  field MUST derive from the same root packet.\\
+  By calling $B_1$, $B_2$ and $B_3$ the octects corresponding to bits
+  8--15, 16--23 and 24--31, respectively, the sequence number value
+  can be computed as
+$$
+   B_1 \wedge \text{\tt 16\#0F\#} + 
+   2^8 B_2 + 2^{16} B_3
+$$ 
+%
+where $\wedge$ is the bitwise AND.  The most significant bit of every
+octet is the one with the smallest index (that is, the most
+significant bit of $B_1$, $B_2$ and $B_3$ are, respectively, bit 8,
+bit 16 and bit 24).
+
+Similarly to the requirements in the RTP specification \cite{rfc3550},
+the initial value of this field SHOULD be random (unpredictable) to
+make known-plaintext attacks on encryption more difficult
+\item[Source ID] A single \ppetp- session can carry packets
+  originating from different sources.  Each source has its own ID that
+  is a 32-bit number.  The ID could be randomly generated by the host
+  or it could be set by external means (e.g., assigned by a
+  centralized server).
+\item[Payload] An opaque sequence of octects whose meaning depends on
+  the profile employed.  Note that the payload section can be empty.
+  An empty payload can be useful to set the default reduction
+  parameters without sending any data (for example, when the source
+  peer makes first contact with the destination peer).
+%
+\item[Signature] It can be 0, 32, 64 or 128 bits long (depending on
+the security and bandwidth requirements) and it is computed as
+follows: the packet is hashed with MD5 (to obtain a 128-bit string)
+and the result is encrypted with AES using a key agreed between the
+nodes at the handshaking time.  The first 1, 2 or 4 quadwords (32-bit
+words) of the encrypted hash are inserted in the \texttt{Signature}
+field.  The size of this field is agreed by out-of-band means.
+\end{description}
+%
+The data packet structure makes its parsing quite easy: the first 64
+bits are a fixed header, the last 0-4 quadwords are used to
+authenticate the packet and everything in between is handed to the
+profile procedures.
+
+\subsection{Control packet format}
+\label{subsub:0.0.3;driver}
+
+The control packets have the following format
+
+\begin{itemize}
+\item
+Control packets, similarly to data packet, begin with a 32-bit header.
+The control packet header has the 
+following structure
+
+\begin{verbatim}
+   type Control_Header is
+    record
+       Version   : Version_Type;
+       Command   : Boolean;       -- True on Control packets
+       Request   : Unsigned_5;
+
+       Flags     : Unsigned_4;
+       Timestamp : Unsigned_20;
+    end record;
+
+
+ for Control_Header'Bit_Order use System.High_Order_First;
+ for Control_Header use
+    record
+       Version     at 0 range 0..1;
+       Command     at 0 range 2..2;
+       Request     at 0 range 3..7;
+
+       Flags       at 1 range 0..3;
+       Timestamp   at 1 range 4..23;
+    end record;
+\end{verbatim}
+\notainterna{La descrizione Ada-like \`e vecchia, i disegni sono aggiornati}
+The meaning of field \ttt Flags! depends on the specific \ttt
+Request!. 
+\item
+The packet payload whose content depends on the requested action.  The
+payload part can be empty.
+\end{itemize}
+
+The header fields have the following meaning
+
+\begin{description}
+\item[Version (V): 2 bit] Same as data packets
+\item[Control (C): 1 bit] This bit is always 1 for control packets.
+\item[Request : 5 bit] The actual request.  Profiles can define
+  request values (strictly) greater than 16 and (strictly) lower than
+  31. Other request values are reserved.
+\item[Flags : 4 bit] Its meaning depends on the value of \ttt
+  Request!. If a request does not use this field, this field SHOULD be
+  equal to 0.
+\item[Sequence Number : 20 bit] The packet sequence number.  The same
+  remarks of data packets apply also in this case.
+\item[Signature] Same as data packets
+\item[Payload] Its meaning depends on the specific request
+\end{description}
+
+A pictorial representation of a control packet is given
+\fref{control-header}. 
+
+\begin{figure}
+\begin{center}
+\begin{verbatim}
+ 0                   1                   2                   3
+ 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
++-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+|V=1|C| Request | Flags |         Sequence number               |
++-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+:                      Optional Payload                         :
++-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+:                                                               :
+:                Signature (0, 32, 64 or 128 bit)               :
+:                                                               :
++-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+\end{verbatim}
+\end{center}
+\caption{\ppetp- control packet \label{fig:control-header}}
+\end{figure}
+
+\begin{table}
+  \caption{Obfuscation mask.  Observe that \ttt Mask(n)!$=197 \cdot
+  21^n \bmod 256$. \label{tbl:obfuscated}} 
+\begin{center}
+\small
+  \begin{tabular}{|c|*{16}r|}
+\hline
+\ttt n! &
+0&  1&  2&  3&  4&  5&  6&  7&  8&  9&  10&  11&  12&  13&  14&  15\\
+\hline
+\ttt Mask(n)! &
+    197&  41&  93& 161&
+    53&  89&  77&  81&
+    165& 137&  61&   1&
+    21& 185&  45& 177\\
+\hline
+  \end{tabular}
+\end{center}
+\end{table}
+%
+This document defines the followings values for the \ttt Request!
+field 
+
+\begin{description}
+\item[\ttt Hello! (\ttt Request=0!)] This request is used to
+  communicate to the remote peer the profile and the port used by
+  the node to receive commands and acknowledges.  The payload is a
+  32-bit integer which coincides with the port number.  This control
+  does not use the \ttt Flags! field.
+\item[\ttt Set\_Default! (\ttt Request=1!)] 
+  It is expected that the processing procedure specified by the
+  profile will require some parameter in order to uniquely identify
+  the processing carried out by the node.   Since it is reasonable to
+  assume that such parameters will be chosen at start-up time and
+  never changed, it is convenient to introduce this control packet
+  which allows a node to communicate to its target
+  peers its parameters just at the beginning.  Parameters can be
+  temporally changed by using the \ttt Inline! field in data packets.
+  The payload format of this request depends on the profile. The \ttt
+  Profile! is stored in the \ttt Flags! field.
+\item[\ttt Acknowledge! (\ttt Request=2!)] This type of control packet is
+  used to acknowledge the receipt of other control packets. The
+  payload is a 32-bit number which contails the sequence number of the
+  acknowledged packet.  \textbf{The meaning of \texttt{Flags} depends
+  on the command 
+  acknowledged, but the zero value has always the meaning of
+  ``positive acknowledge'' (i.e., no error occurred).}
+\item[\texttt{Data\_Control} (\texttt{Request=3})] This command is used to
+  request a node to send data to another node, to stop the data
+  transmission to another node or to start the hole punching
+  procedure.  The payload (see Fig.~\ref{fig:send_payload}) contains the
+  following fields
+     \begin{itemize}
+       \item Bit 0 (flag \ttbf{V}) is set to 1 if the \texttt{IP\_address}
+       field stores an IPV6 address.
+       \item Bit 1 and 2 (\ttbf{SC} field) specify the actual
+       ``sub-command.''  It is equal to 0 for a ``\emph{start}'', to 1
+       for a ``\emph{stop}'' and to 2 for a ``\emph{punch}.''  Value 3
+       is reserved.
+       \item Bits from 3 to 6 are the \ttbf{Channel} field and
+       represent the output channel number of the source peer to be
+       used. 
+       \item Bits from 7 to 15 are reserved.  They SHOULD be set to
+       zero by the transmitter and SHOULD be ignored by the receiver.
+       \item Bits from 16 to 31 are the \ttbf{Port} field and
+       represent the PPETP port of   the destination node
+       \item Field \ttbf{IP Address} can be 32 or 128 bits long and 
+       contains the IP address of the destination node.  If flag \texttt{
+       V} is 0, this field contains a 32 bits long IPv4 address; if
+       flag \texttt{V} is 1, this field contains a 128 bits long IPv6
+       address.
+       \item The last field (\ttbf{Diffie-Hellman public key}) has
+       variable size, it is present only with the \emph{start}
+       sub-command and it contains the public key of the new lower peer.
+     \end{itemize}
+  Note that the \texttt{Data\_Control} command is \textbf{not} signed by
+  the lower peer, but by the server.  If the signature is correct, the
+  node replies with an \texttt{Acknowledge} packet with \texttt{Flags}
+  equal to zero and carries out the requested action; otherwise, it
+  replies with a packet with \texttt{Flags} equal to 1.
+
+% \item[\ttt Negative\_Acknowledge! (\ttt Request=3!)] Used to ``answer
+%   no'' to a request.  For example, in response to a request \ttt
+%   Send_Data! with invalid authentication credentials.
+% This control does not require an acknowledge.  Currently the \ttt
+%   Flags! field is not used, but in a future could be used to
+%   distinguish between different reasons for a NACK. 
+% \item[\ttt Send\_Data! (\ttt Request=4!)] This command is used to
+%   request a node to send data to another node.  The payload (see
+%   \fref{send_payload}) contains the following fields
+%      \begin{description}
+%        \item[Channel (4 bits)] The channel to be used.
+%        \item[Flag O (obfuscated)] It seems that some NATs try to
+%        change anything which looks like an IP address.  If this flag
+%        is set, the \ttt IP_address! field is obfuscated by \ttt
+%        XOR!-ing it with the values in Table~\ref{tbl:obfuscated}.
+%        \item[Flag V (IPV6)] Set to 1 if the \ttt IP_address! field
+%        stores an IPV6 address.
+%        \item[Port (16 bits)] The PPETP port where to send the
+%        data. 
+%        \item[IP Address (32 or 128 bits)] If flag \ttt V! is 0, this
+%        field is 32 bits long and it holds the IPv4 address of the
+%        target. If flag \ttt V! is 1, this field is 128 bits long and
+%        it holds the IPv6 address of the target.
+%        \item[Credential length (16 bits)] This is the length of the
+%        credential field (it can be 0)
+%        \item[Credential profile (8 bits)]
+%        \item[Credential payload] Its size and format depend on the
+%        profile. 
+%      \end{description}
+%   If the authentication credentials are
+%   correct, the node replies with an \ttt Acknowledge! packet and
+%   begins sending data to the required address; otherwise, it replies
+%   with a \ttt Negative_Acknowledge!.  Note that it is not necessary
+%   that the sender address be equal to the destination address included
+%   in the request.  This control does not use the \ttt
+%   Flags! field.
+% \item[\ttt Receive\_Data! (\ttt Request=5!)] This packet is used to
+%   ask a node to prepare itself for data reception.  If the
+%   authentication credentials are not correct, the node replies with a
+%   \ttt Negative_Acknowledge!, otherwise it sends a \ttt Send\_Data!
+%   command to the remote node.  The payload for this command is shown
+%   in \fref{receive_payload} and it is similar 
+%   to the payload for the \ttt Send_Data! command, with the difference
+%   that now there are \emph{two} possibile authentication schemes: the
+%   first one are the credentials for the \ttt Receive\_Data! packet and
+%   the second one are to be copied verbatim to the \ttt Send\_Data!
+%   request.   Fields \ttt Port! and \ttt IP address! correspond to the
+%   control port of the remote node. This control does not use the \ttt
+%   Flags! field.
+% \item[\ttt Stop! (\ttt Request=6!)] This packet closes the data
+%   transmission toward the target described in the payload.  The
+%   payload for this command is equal to the payload of \ttt
+%   Send_Data!. 
+\item[\ttt Nul! (\ttt Request=7!)] This packet is a no-op. It does not
+  use the \ttt Flags! field.  Any byte following the basic header is
+  considered a payload. It is used in hole-punching
+  procedures.   
+% \item[\ttt Punch! (\ttt Request=8!)]  This command starts a
+%   hole-punching procedure towards another node.  The payload is the
+%   same of the \ttt Send_Data! command.  The \ttt CH! field SHOULD be
+%   zero. 
+\end{description}
+%
+In general, when a node transmits a control packet, it waits for an
+acknowledge to return.  If the acknowledge does not arrive after a
+suitable amount of time, the repeats the request \emph{using the same
+  sequence number}.
+
+\begin{figure}
+  \begin{center}
+    \begin{verbatim}
+Data_Control payload:
+ 0                   1                   2                   3
+ 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
++-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+|V| SC|        Channel          |              Port             |
++-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+:               :               :               :               :
+:               :   IP address (32 or 128 bits) :               :
+:               :               :               :               :
++=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
+|             Optional Diffie-Hellman public key                :
++-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+    \end{verbatim}
+  \end{center}
+\caption{Payload of the \texttt{Data\_Control} request
+  \label{fig:send_payload}} 
+\end{figure}
+
+% \begin{figure}
+%   \begin{center}
+%     \begin{verbatim}
+%  0                   1                   2                   3
+%  0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2
+% +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+% |        Reserved   |  CH   |O|V|              Port               |
+% +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+% :               :               :               :                 :
+% :               :            IP address         :                 :
+% :               :               :               :                 :
+% +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
+% |    Reserved   |  Auth_Profile Payload Length  |  Auth_Profile   |
+% +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+% :                                                                 :
+% :                         Auth_Profile Payload                    :
+% :                                                                 :
+% +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+%     \end{verbatim}
+%   \end{center}
+% \caption{Payload of the \ttt Send\_Data! and \ttt Stop! commands
+%   \label{fig:send_payload}} 
+% \end{figure}
+%
+% \begin{figure}
+%   \begin{center}
+%     \begin{verbatim}
+%  0                   1                   2                   3
+%  0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2
+% +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+% |        Reserved   |  CH   |O|V|              Port               |
+% +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+% :               :               :               :                 :
+% :               :            IP address         :                 :
+% :               :               :               :                 :
+% +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
+% |    Reserved   |  Auth_Profile Payload Length  |  Auth_Profile   |
+% +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+% :                                                                 :
+% :                        Auth_Profile Payload                     :
+% :                                                                 :
+% +=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
+% |    Reserved   | Auth_Profile_2 Payload Length |  Auth_Profile_2 |
+% +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+% :                                                                 :
+% :                        Auth_Profile_2 Payload                   :
+% :                                                                 :
+% +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+%     \end{verbatim}
+%   \end{center}
+% \caption{Payload of the \ttt Send\_Data! command \label{fig:receive_payload}}
+% \end{figure}
+
+\section{What a profile must specify}
+\label{subsub:0.0.4;driver}
+
+\subsection{Processing profiles}
+\label{sub:0.0.4.0;transport_layer}
+
+As already said, the description of PTL of \ppetp- must be completed
+with a \emph{profile description} which specifies the processing
+applied to the packets.  In order to be complete a profile description
+must specify
+
+\begin{enumerate}
+\item
+The profile number (field \ttt Profile! in the header)
+\item
+The processing applied to the content packets and, possibly, how the
+content packets are recovered by their processed versions.
+\item
+If the processing requires some parameters, the profile must specify
+\begin{enumerate}
+  \item The payload of the \ttt Set_Default! request
+  \item The profile-specific header added when the \ttt Inline! bit in
+  a data packet is 1.
+\end{enumerate}
+\item
+Any profile-specific requests (field  \ttt Request! in the control
+packet header)
+\item
+The meaning of the \ttt Marker! field.
+\end{enumerate}
+%
+\subsubsection{Currently defined profiles.}
+\label{subsub:0.0.4.0.0;transport_layer}
+
+It is worth  giving an informal description of the currently defined
+profiles. 
+
+\begin{description}
+\item[Basic]  Within this profile the packets are not processed at
+  all, but sent as they are.
+\item[Vandermonde] This profiles processes the packets by using the
+  approach described in \cite{bernardini08:dcc08}.  The goal of this
+  profile is to obtain from the original data stream a new stream
+  whose band requirement is $1/R$-th of the band requirement of the
+  original stream.  The processing is done in a way such that a node
+  can recover the original stream as soon as it receives $R$ different
+  streams. 
+\end{description}
+%
+\begin{table}
+\caption{Numbers associated to defined processing profiles
+\label{table:proc_profiles}}
+\begin{center}
+  \begin{tabular}{|c|l|}
+\hline
+    \multicolumn{1}{|p{3.3em}}{Profile Number} &
+    \multicolumn{1}{|c|}{Profile name} \\
+\hline
+\hline
+   ~0 & Basic \\ \hline
+   ~1 & Vandermonde \\ \hline
+   15 & Reserved for extensions \\ 
+\hline
+  \end{tabular}
+\end{center}
+\end{table}
+%
+\subsection{Authentication profiles}
+\label{sub:0.0.4.1;transport_layer}
+
+In order to be complete, any authentication profile description must
+specify
+
+\begin{enumerate}
+\item
+The profile number
+\item
+The payload format
+\item
+The authentication algorithm
+\end{enumerate}
+%
+
+\begin{table}
+\caption{Numbers associated to defined authentication profiles
+\label{table:auth_profiles}}
+  \begin{center}
+    \begin{tabular}{|c|l|}
+\hline
+    \multicolumn{1}{|p{3.3em}}{Profile Number} &
+    \multicolumn{1}{|c|}{Profile name} \\
+\hline
+\hline
+  ~~0 & Void  \\ \hline
+  ~~1 & Token \\ \hline
+  ~~2 & Signed \\ \hline
+  255 & Reserved for extensions \\ 
+\hline
+    \end{tabular}
+  \end{center}
+\end{table}
+
+\subsubsection{Currently defined profiles}
+
+It is worth  giving an informal description of the currently defined
+profiles. 
+
+\begin{description}
+  \item[Void] With this profile no authentication is done and every
+  request is accepted.  Since this profile is very unsecure, it should
+  be used only in very controlled context (i.e., testing).
+  \item[Token] With this protocol an ``authority'' (e.g., the root
+  server in a video streaming application) gives at each node a list
+  of randomly generated ``tokens'' (64 bit words).  Every time one
+  node wants to contact another one, it asks to the authority (which
+  will check the identity of the node) for a token to be included in
+  the \ttt Send_Data! or \ttt Receive_Data! request.  Each token is to
+  be used only once in order to avoid replay attacks.
+\begin{commento}
+Another possible attack that could be mounted if token
+  reuse was allowed is the following: one person pay the subscription
+  to a video streaming service and send the received tokens to a
+  friend of his.  The friend can use the tokens to watch the video
+  without having to pay the subscription
+\end{commento}
+  \item[Signed] The token approach has two drawbacks
+    \begin{itemize}
+      \item
+        It requires to the server to store all the token sent to every
+        clients 
+      \item
+        Two persons could share the same subscription, but with a
+        smaller quality, if one sends to the other part of the
+        received tokens.  Since the tokens are not ``bound'' to the
+        node which issues the \ttt Send_Data! request, the second
+        person can use the tokens to access the data.
+    \end{itemize}
+   The \textbf{Signed} profile overcomes those drawbacks.  Within this
+   profile the authority sends to the node a common key that will be
+   used to sign the IP address of the authorized node.
+\end{description}
+
+\chapter{Basic processing profile}
+\label{sect:0.0;transport_layer}
+
+\section{Profile number}
+\label{sub:0.0.0;transport_layer}
+
+The number assigned to the Basic profile is 0.
+
+\section{Data processing}
+\label{sect:0.0.0;transport_layer}
+
+The data to be transmitted is simply copied verbatim to the payload. 
+
+\section{Meaning of the \marker- field}
+\label{sect:0.0.3;transport_layer}
+
+No meaning is defined for the \marker- field.  It SHOULD be zero.
+
+\section{Profile parameters format}
+\label{sect:0.0.1;transport_layer}
+
+Since no processing is done, there is no need for profile specific
+parameters.
+
+\section{Profile-specific requests}
+\label{sect:0.0.2;transport_layer}
+
+The Basic profile does not have any profile-specific requests.
+
+
+\chapter{Vandermonde processing profile}
+\label{subsub:0.1.1;driver}
+
+\section{Profile number}
+\label{sub:0.1.1.0;transport_layer}
+
+The number assigned to the Vandermonde profile is 1.
+
+\section{Data processing}
+\label{subsub:0.1.1.0;driver}
+
+This profile is based on the ideas of
+\cite{bernardini08:dcc08}. The processing procedure is as follows
+
+\begin{description}
+\item[At startup] 
+  \begin{enumerate}
+    \item
+      At startup the node chooses a finite field
+$\gf{2^{8d}}$ an element $b \in \gf{2^{8d}}$ and a positive integer $R$
+called the \emph{reduction factor}.  
+\begin{commento}
+Only values $d \in \{1,2,4\}$
+are allowed in this profile.  Fields $\gf{2^{8d}}$ are constructed as
+polynomial in coefficients in $\{0,1\}$ modulo a specific polynomial.
+Table~\ref{table:poly} shows the polynomial to be used for every
+choice of $d$.  \ttt GF_Size! in Table~\ref{table:poly} refers to the
+name of the corresponding field in the profile-specific header.    
+\end{commento}
+   \item
+The node constructs the
+$R$-dimensional row vector
+%
+\begin{equation}
+\label{eq:0;driver}
+\bfr = \vriv{1}{b} \cdots {b^{R-1}}
+\end{equation}
+%
+called \emph{reduction vector}
+  \end{enumerate}
+
+\begin{table}
+\caption{Polynomials used to construct the finite fields used in the
+  reduction profile. To obtain the actual polynomial, convert to
+  binary the hexadecimal number in the third column.  The bit
+  corresponding to $2^n$ corresponds to the coefficient of $x^n$.  For
+  example, in the $\gf{2^{8}}$ case, the binary word correspondent of
+  \texttt{16\#1\_1D\#} is \texttt{1\_0001\_1101} which corresponds to
+  the polynomial $x^{8} + x^4 + x^3 + x^2 + 1$.
+ \label{table:poly}}
+\begin{center}
+\begin{tabular}{ccr}
+  \ttt GF_Size!$=d-1$ & Field size & 
+\multicolumn{1}{c}{Polynomial} \\
+  0  & $2^8$    & \texttt{16\#1\_1D\#}\\
+%\texttt{1\_0001\_1101}\\
+% $x^8 + x^4 + x^3 + x^2 + 1$\\
+  1  & $2^{16}$ & \texttt{16\#1\_002D\#} \\
+%\texttt{1\_0000\_0000\_0010\_1101} \\
+%$x^{16} + x^5 + x^3 + x^2 + 1$\\
+%  2  & $2^{24}$ & $x^{24} + x^{16} + x^{15} +x^{14} +x^{13}+x^{10}+x^9
+%  x^7 + x^5 + x^3 + 1$\\
+  3  & $2^{32}$ & \texttt{16\#1\_0000\_4299\#}
+%\texttt{1\_0000\_0000\_0000\_0000\_1000\_0010\_1001\_1001}
+%$x^{32} + x^{15} + x^{9} + x^7 + x^4 + x^3 + 1$
+\end{tabular}
+\end{center}
+\end{table}
+
+\item[For every packet] Let $P$ be the packet to be processed.  Let
+  $N$ the number of bytes in $P$.  Let $P(n)$, $n=0,\ldots,N-1$ the
+  $n$-th byte of $P$.
+  \begin{enumerate}
+    \item If $N$ is a multiple of $Rd$, let $Q=P$, otherwise create
+    $Q$ by padding $P$ with the following algorithm
+    \begin{enumerate}
+      \item
+        Create a new packet $Q$ by concatenating $P$ with $S \perdef
+        Rd - [N \bmod Rd]$ zeros.  Let $L=S+N$ be the number of bytes of
+        $Q$. Let $Q(k)$, $k=0, \ldots, L-1$, denote the $k$-th byte
+        of $Q$.
+      \item If $S < 128$, write $S$ in $Q(L-1)$
+      \item If $S \geq 128$ write $128+S \mod 128$ in $Q(L-1)$ and $(S-S
+      \mod 128) / 128$ in $Q(L-2)$.
+
+      \begin{commento}
+	In other words, if $S < 128$, $S$ is directly written to
+	$Q(L-1)$, if $S \geq 128$, its lower seven bits are written to
+	$Q(L-1)$ and the remaining bits to $Q(L-2)$.  The most
+	significative bit of $Q(L-1)$ acts as a flag and it is 1 if and
+	only if $S \geq 128$.  This allows us to store values fof $S
+	\leq 2^{15}-1=32,767$, which should suffices for any application.  Note
+	that we cannot store $S$ directly in $Q(L)$ and $Q(L-2)$ as a
+	16-bit value since if $S=1$ byte $Q(L-2)$ is used by data.
+      \end{commento}
+    \end{enumerate}
+  \item
+    For every $m=0, \ldots, L/d-1$ the $d$-byte block $Q(md
+    \ldots md+(d-1))$ is mapped to an element $w_m$ of $\gf{2^{8d}}$
+    as follows: if $Q_{\ell,k}$ denotes the bit of $Q_\ell$
+    corresponding to $2^k$, $k=0, \ldots, 7$, $w_m$ is the element of
+    $\gf{2^{8d}}$ corresponding to polynomial
+$$
+\sum_{c=1}^d \sum_{k=0}^{7} Q_{m d+c,k}\; x^{8c+k}
+$$
+   \item
+     The sequence of words $w_m$, $m=0, \ldots, L/d-1$ is arranged
+     (columnwise) in an $R$-row matrix.  More precisely, if $\bfM$
+     denotes the resulting matrix, the element of row $r$ and column
+     $c$ is
+$$
+\bfM_{r,c} = w_{r + R c}
+$$
+\begin{commento}
+    Note that the number of columns of $\bfM$ is $L/(Rd)$ which is
+    an integer number since $P$ was padded in order to have its length
+    equal to a multiple of $Rd$
+\end{commento}
+   \item
+     Matrix $\bfM$ is left-multiplied by the reduction vector $\bfr$
+     constructed by the node at start-up time.  The resulting vector
+     $\bfu = \bfr \bfM$ is called the \emph{reduced packet}.
+   \item Vector $\bfu$ is mapped back to a sequence of bytes which
+   will make the payload of the data packet.
+  \end{enumerate}
+\end{description}
+
+\paragraph{Reconstruction algorithm}
+Let $\bfu_1$, \ldots, $\bfu_R$ be $R$ different reduced packets
+relative to the same content (padded) packet $Q$ and let $\bfr_1$,
+\ldots, $\bfr_R$ be the corresponding reduction vectors.  Let vector
+$\bfr_\ell$ be based on $b_\ell$, that is, $\bfr_\ell = [1, b_\ell,
+  \ldots, b_\ell^{R-1}]$.  Suppose $b_n \ne b_k$ for every $n\ne k$.
+In order to recover packet $Q$ it sufficies to solve the following
+linear system (in $\gf{2^{8d}}$!)
+%
+\begin{equation}
+\label{eq:1;driver}
+\vciv
+  {\bfu_1}
+  {\bfu_2}
+  \vdots
+  {\bfu_R}
+= \vciv
+  {\quad\bfr_1\quad}
+  {\bfr_2}
+  \vdots
+  {\bfr_R}
+  \bfM
+= 
+\soprasotto{\underbrace{\left[
+  \begin{array}{cccc}
+    1 & b_1 & \cdots & b_1^{R-1} \\
+    1 & b_2 & \cdots & b_2^{R-1} \\
+    \vdots & \vdots && \vdots \\
+    1 & b_R & \cdots & b_R^{R-1} \\
+  \end{array}
+ \right]}}{\bfR}
+  \bfM
+\end{equation}
+%
+Matrix $\bfR$ in \er{eq:1;driver} is a Wandermonde matrix and the
+hypothesis on $b_k$ grants that $\bfR$ is invertible, allowing for the
+reconstruction of $\bfM$ and, consequently, of $P$.
+
+\section{Meaning of the \protect\marker- field}
+\label{subsub:0.1.1.2;driver}
+
+The three bits of the \ttt Marker! field in the data packet header are
+to be interpreted as follows
+
+\begin{description}
+  \item[Bit 0 (most significative)] Unused.  It SHOULD be zero.
+  \item[Bit 1 (\ttt Padding!)] If this bit is 1 it means that the
+  original packet $P$ has been padded before reducing it by using the
+  procedure described in Section~\ref{subsub:0.1.1.0;driver}.
+  \item[Bit 2 (\ttt Full\_Format!)] Unused.  It SHOULD be zero.
+\end{description}
+
+
+\section{Profile parameters format}
+\label{subsub:0.1.1.1;driver}
+
+\subsection{Overview}
+\label{sub:0.1.1.1.0;transport_layer}
+
+This section specifies the format of the profile-specific header in
+data packet and the payload of request \ttt Set_Default!.
+
+The reduction operated by a peer is uniquely determined when the
+following parameters are specified: the Galois field $\gf{2^{8d}}$,
+the reduction factor $R$ and the value $b$ used to construct the
+reduction vector.  Typically the first two parameters remain constant
+during a session, while the third one can occasionally change.
+
+\begin{example}
+A typical case which require the change of $b$ is when a node is not
+able to recover a complete packet, but it wants nevertheless to
+propagate the information.  In such a case it can transmit one of the
+received packets which cannot be expected to have a reduction vector
+equal to the one choose by the node.  In that case the peer needs to
+change temporally the reduction vector.
+\end{example}
+%
+The reduction details can be transmitted in two formats: a full format
+(64 bit) and a compact one (32 bit).  
+
+\subsubsection{Full format} The full format specifies the complete set of
+parameters. 
+
+\begin{verbatim}
+   type Full_Reduction_Header is
+     record
+        Reserved         : Unsigned_22;
+
+        GF_Size          : Unsigned_2;
+
+        Reduction_Factor : Unsigned_8;
+        Reduction_Vector : Unsigned_32;
+     end record;
+
+   for Full_Reduction_Header'Bit_Order use System.High_Order_First;
+   for Full_Reduction_Header use
+     record
+        Reserved         at 0 range 0..21;
+        GF_Size          at 2 range 6..7;
+        Reduction_Factor at 3 range 0..7;
+        Reduction_Vector at 4 range 0..31;
+     end record;
+\end{verbatim}
+
+The meaning of the fields is as follows
+
+\begin{description}
+  \item[\ttt GF\_Size!] If $\gf{2^{8d}}$ is the chosen Galois field,
+  the value of \ttt GF_Size! is equal to $d-1$.  The correspondence
+  between \ttt GF_Size! and the chosen Galois field can be seen in
+  Table~\ref{table:poly}.
+  \item[{\ttt Reduction\_Factor!}] This is the value of $R$.
+  \item[\ttt Reduction\_Vector!] The field \ttt Reduction_Vector!
+specifies the value of $b$ used to construct the reduction vector.
+Only the \ttt GF_Size!+1 less significative bytes of \ttt
+Reduction_Vector! are used, the other SHOULD be set to zero.  The
+value of \ttt Reduction_Vector! MUST be
+interpreted as explained in the descrition of the construction of
+matrix $\bfM$.
+\end{description}
+
+
+\begin{figure}
+\begin{center}
+\begin{verbatim}
+Full format:
+
+   0                :  1            :      2        :          3
+   0 1 2 3 4 5 6 7 8:9 0 1 2 3 4 5 6:7 8 9 0 1 2 3 4:5 6 7 8 9 0 1 2
+  +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+  |                  Reserved                   |GF |  R-Factor     |
+  +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+  |                      Reduction Vector                           |
+  +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+
+Compact format:
+
+   0                :  1            :      2        :          3
+   0 1 2 3 4 5 6 7 8:9 0 1 2 3 4 5 6:7 8 9 0 1 2 3 4:5 6 7 8 9 0 1 2
+  +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+  |                      Reduction Vector                           |
+  +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+\end{verbatim}
+\end{center}
+\caption{Full and compact format for profile-specific header \label{fig:full}}
+\end{figure}
+
+\subsubsection{Compact format} The compact format specifies only the
+reduction vector
+
+\begin{verbatim}
+    type Compact_Reduction_Header is
+    record
+       Reduction_Vector : Unsigned_32;
+    end record;
+
+  for Compact_Reduction_Header'Bit_Order use System.High_Order_First;
+  for Compact_Reduction_Header use
+    record
+       Reduction_Vector at 0 range 0..31;
+    end record;
+\end{verbatim}
+%
+In other words, the compact format is simply the full format without
+the first 32-bit word.
+
+\subsection{Data header format for \ttt Inline!=1} 
+If bit \ttt Inline! in the data header is 1, a profile-specific header
+is inserted after the data header.  The format used in this case is
+the compact one.
+
+\subsection{\ttt Set\_Default! payload} The payload of \ttt
+Set_Default! request is always in the full format.
+
+
+\section{Profile-specific requests}
+\label{sect:0.1.1.0;transport_layer}
+
+The Vandermonde profile does not have any profile-specific requests.
+
+\section{Security}
+\label{sub:0.1.1.4;driver}
+
+A well-known threat in P2P network is ``stream poisoning'' where a
+malicious node injects bougs packets in the stream.  This profile
+allows for a simple defense against stream poisoning if one allows a
+node to receive a number of input stream $M$ greater than the
+reduction factor $R$.  To check if the received data  are correct a
+node can 
+
+\begin{enumerate}
+\item
+  Reconstruct the packet by using $R$ reduced packets.  Let $\bfM$ be the
+  recovered matrix.
+\item
+  For every reduced packet $\bfu_\ell$ not used in reconstructing
+  $\bfM$ compute $\bfv_\ell = \bfr_\ell \bfM$, where $\bfr_\ell$ is
+  the reduction vector associated with $\bfu_\ell$.
+\item
+  If $\bfu_\ell=\bfv_\ell$ for every $\ell$, the received data are
+  correct.  If such equality is not verified for few values of $\ell$,
+  the corresponding reduced packets $\bfu_\ell$ are uncorrect.  If the
+  equality is never verified, it is probable that an uncorrect reduced
+  packet has been used in recovering $\bfM$.
+\end{enumerate}
+%
+In order to contrast stream poisoning, intermediate node SHOULD check
+the correctness of received data (with the algorithm above or in some
+other way) and SHOULD NOT propagate uncorrect packets.
+
+\chapter{Void authentication profile}
+\label{chap:0;transport_layer}
+
+\section{Profile number}
+\label{sect:0.1;transport_layer}
+
+The profile number for the \ttt Void! profile is 0.
+
+\section{Authentication algorithm}
+\label{sect:0.3;transport_layer}
+
+This profile makes no authentication and every request is accepted. 
+
+\section{Payload format}
+\label{sect:0.2;transport_layer}
+
+This profile has no payload.
+
+
+\section{Security considerations}
+\label{sect:0.4;transport_layer}
+
+Obviously this profile is totally insecure and its use is strongly
+discouraged.  It is to be used only in very controlled contexts
+(e.g. testing purposes).
+
+
+\chapter{Token authentication profile}
+\label{chap:1;transport_layer}
+
+\section{Profile number}
+\label{sect:1.0;transport_layer}
+
+This profile has number 1.
+
+\section{Authentication algorithm}
+\label{sect:1.1;transport_layer}
+
+Within this profile we suppose that there is a trusted ``authority''
+which grants the access to the P2P network.  (Note that it is not
+necessary that the authority is a node of the P2P network).  For
+example, in a video streaming context the authority could be a node
+managed by the video provider.
+
+\begin{itemize}
+\item
+When a node $N$ enters the network, the authority, after an
+authentication step, gives to $N$ a list of \emph{tokens} represented
+by 64-bit random numbers.  
+\item
+When a node $A$ wants to contact $N$, it
+first contacts the authority and ask for a token for $N$.  
+\item
+$A$ sends the request to $N$ by using the token as authentication
+  credential. 
+\item
+The authentication succedes if the token received from $A$ is in the
+token list received from the server.
+\item
+The token received from $A$ is removed from the token list.  
+\end{itemize}
+
+
+\section{Payload format}
+\label{sect:1.2;transport_layer}
+
+The payload is the 64-bit token.
+
+\section{Security considerations}
+\label{sect:1.3;transport_layer}
+
+The reason for using every token only once is to avoid ``replay
+attacks.'' Consider for example a provider which offers video
+streaming subject to subcription.  Alice and Bob could both access to
+the service, paying only one subscription.  In order to do that, Alice
+subscribes to the service, receives the authentication tokens and
+gives them to Bob.  Now both Bob and Alice can watch the video by
+using the same tokens.
+
+
+
+
+\chapter{Signed authentication profile}
+\label{chap:2;transport_layer}
+
+\section{Profile number}
+\label{sect:2.0;transport_layer}
+
+This profile has number 2.
+
+\section{Authentication algorithm}
+\label{sect:2.1;transport_layer}
+
+Within this profile we suppose that there is a trusted ``authority''
+which grants the access to the P2P network. 
+
+
+\begin{itemize}
+  \item When a node $A$ connects to the network, the authority, after
+authentication, gives it a secret key $K$
+  \item When a node $B$ wants to receive data from $A$, first contacts
+  the server and ask for an authentication token.  $B$ communicates to
+  the server the port which will be using for receiving data.
+  \item The server concatenate the IP number of $B$ and the port
+  number and hashes it with an hash algorithm which uses the secret
+  key $K$ communicated to $A$.  The actual hash function used is
+  determined by the value of a byte in the payload.  The result of the
+  hashing is the authentication credential.
+  \item Node $A$ includes the authentication credential in its \ttt
+  Send_Data! request
+  \item Node $B$ computes the hash by using the address of $A$ and the
+  secret key $K$.  The authentication succedes if the computed hash
+  matches the token received from $A$.
+\end{itemize}
+
+\begin{commento}
+  The way the key $K$ is transmitted to the node is outside the scope
+  of this specification.  Key transmission will happen by some
+  external means.  For example, it can be given in the body of the
+  response to an RTSP \ttt PLAY! command, it can be a shared secret
+  (e.g. a user password) between server and client or it can be
+  obtained by means of some key-exchange procedure (e.g.,
+  Diffie-Hellman).
+\end{commento}
+
+\section{Payload format}
+\label{sect:2.2;transport_layer}
+
+The payload for this authentication profile has the following fields
+(see \fref{signed_payload})
+
+\begin{description}
+\item[\ttt Hash\_funct! (8 bits)]  This value specifies the hash function used
+  to compute the token.  Table~\ref{table:hashes} shows the currently
+  defined values.
+\item[\ttt Reserved! (24 bits)] Those bits are currently unused and
+  reserved for future applications.  They SHOULD be zero.
+\item[Hashing result (variable length)] This part depends on the
+  hashing algorithm.  Unless specified otherwise, this field is the
+  output of the hashing function taken verbatim.
+\end{description}
+%
+
+\begin{figure}
+  \begin{center}
+    \begin{verbatim}
+ 0                :  1            :      2        :          3
+ 0 1 2 3 4 5 6 7 8:9 0 1 2 3 4 5 6:7 8 9 0 1 2 3 4:5 6 7 8 9 0 1 2
++-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+|   Hash_funct    |               :    Reserved   :               |
++-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+:                   Result of the hashing function                :
++-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+    \end{verbatim}
+  \end{center}
+\caption{Payload for the \ttt Signed! authentication profile
+  \label{fig:signed_payload}} 
+\end{figure}
+
+\begin{table}
+\caption{Hash algorithms currently defined \label{table:hashes}}
+  \begin{center}
+    \begin{tabular}{|c|l|l|}
+\hline
+    \multicolumn{1}{|c}{\ttt Hash\_funct!} &
+    \multicolumn{1}{|c|}{Name} &
+    \multicolumn{1}{|c|}{Description} \\
+\hline
+\hline
+      0 & HMAC-SHA1 & \cite{HMAC, SHA1} \\
+      1 & HMAC-SHA256 & \cite{HMAC, SHA1} \\
+      2 & HMAC-SHA384 & \cite{HMAC, SHA1} \\
+      3 & HMAC-SHA512 & \cite{HMAC, SHA1} \\
+\hline
+    \end{tabular}
+  \end{center}
+\end{table}
+
+\section{Security considerations}
+\label{sect:2.3;transport_layer}
+
+
+
+\chapter{RTSP and SDP Extensions}
+\label{sect:3;driver}
+
+In this chapter we describe few proposed extensions to RTSP and SDP in
+order to integrate them with \ppmtp;.
+
+\section{Extensions to SDP}
+
+\begin{itemize}
+\item
+We propose the addition of the new \ttt <proto>! value \ttt RTP/PPETP!
+to the \ttt m=! field (media description field) of SDP
+\cite{rfc4566}.  
+\item
+As with RTSP \cite{rfc2326}, the \ttt <port>!
+sub-field of \ttt m=! SHOULD be 0.  Moreover, the same remarks made in
+\cite{rfc2326} about the \ttt c=! field apply.
+\end{itemize}
+
+
+\section{Extensions to RTSP}
+\label{subsub:0;transport_layer}
+
+\subsection{Extensions to Transport Header}
+\label{sub:0.0;transport_layer}
+
+\begin{itemize}
+\item
+New value \ttt\ppetp-! for \ttt lower-transport! \cite[Section 12.39,
+page 61]{rfc2326} is added.  If other transport protocols other than
+UDP are used, name of the form \ttt\ppetp-!-\ttt<proto>! can be used.
+\item
+The port numbers in the \ttt client_port! parameter are to be
+interpreted as \ppetp- ports.
+\end{itemize}
+
+\section{New header \protect\ttt PPETP-Authentication!}
+\label{sect:3.0;transport_layer}
+
+A new header \ttt PPETP-Authentication! is added
+
+\begin{verbatim}
+  PPETP-Authentication = "PPETP-Authentication" ":" auth-spec
+  auth-spec            = "none"
+                       | "token"
+                       | "signed" "/" hash-spec "/" key-exchange-spec
+  key-exchange-spec    = 1#key-echange-name
+  key-exchange-name    = "clear"
+                       | "password"
+                       | "password-encrypted"
+                       | "diffie-hellman"
+  hash-spec            = 1#hash-name
+  hash-name            = "HMAC-MD5"
+                       | "HMAC-SHA1"
+                       | "HMAC-SHA256"
+\end{verbatim}
+
+This header is sent 
+\begin{description}
+\item[\ttt S -> C!]
+In response to a \ttt SETUP! command.  The values \ttt hash-spec! and
+\ttt key-exchange-spec! include a list of methods accepted by the
+server.  The client MUST choose one combination.   If the \ttt
+key-exchange-spec! field includes \ttt diffie-hellman! the \ttt Key!
+field with the server half-key and the Diffie-Hellman parameters MUST
+be present.
+\item[\ttt C -> S!]  With a \ttt PLAY! command.  In this case both \ttt
+hash-spec! and \ttt key-exchange-spec! must include only one
+choice. If key exchange procedure \ttt diffie-hellman! is chosen, then
+the \ttt PLAY! command MUST include a \ttt PPETP-Key! header.
+\end{description}
+%
+The meaning of the \ttt key-exchange-spec! values are as follows
+
+\begin{description}
+\item[\ttt clear!] The key will be sent in clear with the answer to
+  the \ttt PLAY! command.
+\item[\ttt password!] The key is the user password
+\item[\ttt password-encrypted!] The key will be sent with the \ttt
+  PLAY! command encrypted with the user password
+\item[\ttt diffie-hellman!] The Diffie-Hellman key exchange procedure
+  is to be used.  The client will send its half-key in the \ttt
+  PPETP-Key!  header with the \ttt PLAY! command and the server will
+  send its half-key in the answer to the \ttt PLAY! command.
+\end{description}
+%
+\section{Header \protect\ttt \ppetp--Key!}
+\label{sect:3.1;transport_layer}
+
+\subsection{Syntax}
+\label{sub:3.1.0;transport_layer}
+
+A new header \ttt\ppetp--key! is added.
+
+\begin{verbatim}
+  PPETP-Key         = "PPETP-Key" ":" ppetp-key-value *("," ppetp-key-spec)
+  ppetp-key-value   = "key=" 1*HEXDIG
+  ppetp-key-spec    = ppetp-field-value
+                    | ppetp-basis-value
+                    | ppetp-enc-method
+
+  ppetp-field-value = "field=" field-name
+  ppetp-field-name  = ppetp-basic-field [ "/" ppetp-polynomial ]
+  ppetp-polynomial  = ppetp-monomial 1*("+" [1*DIGIT] ppetp-monomial)
+                      [ "+" 1*DIGIT ]
+  ppetp-monomial    = "x" "^" 1*DIGIT 
+  ppetp-basic-field = "mod" 1*DIGIT
+                    = "GF" 1*DIGIT "^" 1*DIGIT
+
+  ppetp-basis-value = "basis=" 1*HEXDIG
+
+  ppetp-enc-name    = "enc=" ppetp-enc-name
+  ppetp-enc-name    = "DES"
+                    | "AES"
+\end{verbatim}
+
+\subsection{Remarks}
+\label{sub:3.1.1;transport_layer}
+
+The \ttt\ppetp--Key! header is used for estabilishing a common key
+between client and server.  Its actual meaning depends on the value of
+\ttt key-exchange-spec! subfield.
+
+\begin{description}
+\item[\ttt key-exchange-spec=clear!] Only subfield \ttt key=! SHOULD
+  be present.  The value of  \ttt key=! is the actual key value.
+\item[\ttt key-exchange-spec=password!] In this case the field
+  \ttt\ppetp-Key! SHOULD NOT be present, since a secret shared between
+  client and server (e.g. the user password) is going to be used. 
+\item[\ttt key-exchange-spec=password-encrypted!] In this case both
+  \ttt key=! and \ttt enc=! subfields MUST be present and the other
+  subfields SHOULD NOT be present.  The value of  \ttt key=! is key
+  encrypted with the algorithm specified in \ttt enc=! using the user
+  password to create the key as described in
+  Section~\ref{subsect:key-creation}. 
+\item[\ttt key-exchange-spec=diffie-hellman!] In this case fields 
+  \ttt key!,   \ttt field! and \ttt basis! MUST be present while other
+  fields SHOULD NOT be present.  The meaning of fields is described in
+  detail in   Section~\ref{subsect:diffie}.
+\end{description}
+%
+
+\subsection{Key creation}
+\label{subsect:key-creation}
+
+\subsection{Diffie-Hellman implementation}
+\label{subsect:diffie}
+
+Here we recall briefly the Diffie-Hellman key exchange protocol as
+described in RFC 2631 \cite{rfc2631}.
+
+\section{Body for reply to \protect\ttt PLAY! command}
+\label{sect:3.2;transport_layer}
+
+The body of the reply to \ttt PLAY! is used to transmit informations
+about the \ppetp- parameters as: the number of channels, the
+processing profile to use and its parameters, the addresses of the
+remote peers and so on.  The body is in XML format with the following
+syntax
+
+\input{body-syntax}
+
+% \begin{verbatim}
+% start     = Configure
+% Configure = element configure { Session+ }
+% Session   = element session { 
+%               attribute port { xsd:integer },
+%               Output, Input }
+% 
+% Output    = element output { Channel+ }
+% Channel   = element channel { 
+%               attribute id { xsd:integer },
+%               attribute max-target { xsd:integer }?
+%               Profile 
+%             }
+% Profile   = element profile {
+%               (attribute name {text} | attribute id { xsd:integer })
+%               Parameter* 
+%             }
+% Parameter = element parameter {
+%                attribute name  { text },
+%                attribute value { text }
+%             }
+% 
+% Input     = element input { Peer+ }
+% Peer      = element peer  { Address, Auth-data* }
+% Address   = element address {
+%                attribute address { text },
+%                attribute port    { xsd:integer },
+%                attribute channel { xsd:integer }
+%             } 
+% Auth-data = element auth-data {
+%                attribute command { text }?
+%                (attribute profile-name { text }
+%               | attribute profile-id { xsd:integer })
+%                (attribute value { text } 
+%               | element   value { text })
+%             }
+% \end{verbatim}
+
+\begin{description}
+\item[Configure] This is the ``root'' of the XML document which
+  describe the required configuration.  Inside a \ttt configure! node
+  are contained one or more \ttt session! description.
+\item[Session] This node contains the informations necessary to
+  configure a session.  Attribute \ttt port! is the number of the
+  control port associated to the session.  The sources are described
+  in the \ttt input! node and the channels are descirbed in the \ttt output!
+  node. 
+\item[Output] The content of the \ttt output! node is a sequence of
+  \ttt channel!s.
+\begin{description}
+\item[Channel] Each \ttt channel! describes the configuration required
+  for a single channel.  The following informations are given 
+  \begin{itemize}
+    \item \ttt id! The channel ID, used in some control packets such
+    as  \ttt Send_Data! and \ttt Receive_data!
+    \item \ttt max-target! Optional.  The maximum number of targets
+    which will be attached to this channel
+    \item The profile associated to the channel and the corresponding
+    processing parameters.  Those informations are contained in a \ttt
+    profile! node.
+  \end{itemize}
+\item[Profile] The profile node specifies the profile name and any
+  parameter necessary to the packet processing.  More precisely,
+  \begin{itemize}
+    \item The profile name is specified with the attribute \ttt name!
+    (whose value is the profile name, currently defined names are \ttt
+    basic! or \ttt vandermonde!) or with the attribute \ttt id! (whose
+    value is the integer corresponding to the profile, currently: 0
+    for \ttt basic! and 1 for \ttt vandermonde!)
+    \item Each profile parameter is specified with a \ttt param! node.
+  \end{itemize}
+\item[Param] A \ttt param! node is used to specify a profile
+  parameter. A \ttt param! node has two attributes: \ttt name! and
+  \ttt value!.  The set of valid parameter names and how the value is
+  to be interpreted, depends on the profile.
+\end{description}
+\item[Input] The node \ttt input! contains a sequence of \ttt peer!
+  nodes
+  \begin{description}
+    \item[Peer]  This node contains  informations on how to contact a
+    peer: the peer address in node \ttt address! and
+    authentication-related informations in the node \ttt auth-data!. 
+    \item[Address] The peer address is described by means of the
+    attributes
+    \begin{description}
+      \item[\ttt address!] The IP address in string form (both IPv4
+      and IPv6 addresses are acceptable)
+      \item[\ttt port!] The peer control port, in decimal.
+      \item[\ttt channel!] The channel number, in decimal
+    \end{description}
+   \item[Auth-data] Nodes of this type contain the tokens to be used
+   to for authentication purposes to the remote peer.  It is necessary
+   to specify
+   \begin{itemize}
+     \item The authentication profile.  This is given in the attribute
+     \ttt profile-name!.  Currently defined profile names are \ttt
+     void!, \ttt token!, \ttt signed!.  The authentication profile can
+     also be given with the attribute \ttt profile-id! whose value is
+     the ID number associated to the profile.
+     \item The command the token is to be used for (attribute \ttt
+     command!).  Currently defined \ttt command! values are \ttt
+     start! and \ttt stop!.
+    \item The token value, given in the attribute \ttt value! or in a
+    node \ttt value!.  The interpretation of this field can be defined
+    by the profile and the default value is to interpret this field as
+    an hexadecimal number corresponding to the payload to be attacched
+    to the control packet.
+   \end{itemize}
+  \end{description}
+\end{description}
+%
+
+An example of XML description
+
+\begin{verbatim}
+<configure>
+  <session port="12345">
+    <output>
+      <channel id="1" max-target="3">
+          <profile name="vandermonde">
+             <param name="field" value="16" />
+             <param name="reduction-factor" value="8" />
+          </profile>
+      </channel>
+      <channel id="2">
+          <profile name="basic"/>
+      </channel>
+    </output>
+    <input>
+       <peer>
+         <address address="127.0.0.1" port="3214" channel="4" />
+         <auth-data profile-name="signed" command="start">
+           <value>
+             0123456789abcdef
+           </value>
+         </auth-data>
+         <auth-data profile-name="token" command="stop" value="034af45">
+       </peer>
+       <peer>
+       </peer>
+    </input>
+  </session>
+</configure>
+\end{verbatim}
+
+\chapter{NAT traversal}
+\label{chap:3;transport_layer}
+
+In this chapter we describe briefly the NAT traversal procedure. This
+chapter is currently only ``a bunch of ideas.'' \fref{nat-trav} shows
+schematically how UDP hole punching is integrated in PPETP.
+
+\begin{enumerate}
+  \item Suppose a new user contacts the server.  The server sends to
+  the user an address (port and IP) and an ID (an hexadecimal value).
+  In the figure it is supposed that the extended RTSP described in
+  Chapter~\ref{sect:3;driver} is used, but this is not necessary.  The
+  user sends \textbf{using its session port} to the received address a
+  \ttt HELO! packet with the ID as payload.  This allows the server to
+  know the the pair ``visible'' port and IP associated to the user
+  session port.
+  \item Another node (B) contacts the server and the same protocol is
+  carried out.   In this case we suppose that the server assigns node
+  A as a source peer of B.
+  \item Upon receipts of the \ttt HELO! command from B, the server
+  sends a \ttt Punch! command to A.  The \ttt ACK! to \ttt HELO! sent
+  to B implies a \ttt Punch! command for every Peer assigned to B.  A
+  and B executes the \ttt Punch! command by sending each other an \ttt
+  HELO! packet.  The nodes should \ttt ACK! the \ttt HELO! packets.
+\end{enumerate}
+%
+Note that this require that each node has only one input port.
+
+\begin{figure}
+\centerline{\unafigura{nat-trav}}
+\caption{Hole punching in PPETP
+\label{fig:nat-trav}}
+\end{figure}
+%
+
+\appendix
+
+\chapter{\ppetp- API}
+\label{sect:1;driver}
+
+In this chapter we describe a possible API for \ppetp-.  Currently the
+``body'' of this chapter is automatically generated from the actual
+\ttt .ads! files.  
+
+\section{User functions}
+\label{sect:1.1;driver}
+
+\input{ppetp-api}
+
+
+
+\bibliographystyle{alpha}
+\bibliography{medusa_biblio}
+\end{document}
+
+
+% LocalWords:  iso english parolae

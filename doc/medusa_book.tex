@@ -1,0 +1,1981 @@
+%-*- mode: latex; ispell-local-dictionary: "english" -*-
+\documentclass{medusabook}
+
+\usepackage{amsmath}
+\usepackage{amsbsy}
+\usepackage{amssymb}
+\usepackage{amsthm,amsfonts}
+\usepackage{color}
+\usepackage{srcltx}
+\usepackage{appendix}
+\input{macrodef}
+%
+\titleimage{chestCN9697}% clarita1000@gmail.com
+\title{Medusa internals}
+\author{R. Bernardini}
+%
+\setcounter{secnumdepth}{3} 
+\setcounter{tocdepth}{3}
+\begin{document}
+  \maketitle
+\tableofcontents
+\chapter{Introduction (read me, please!)}
+
+\section{Why this document?}
+\label{sect:0;medusa_book}
+
+The goal of this book is to document the internal details of
+\medusa-. Yes, I know, you already guessed that by reading the
+title\ldots{} (if you didn't, you can stop reading here).  Maybe it is
+worth spending a few words about \emph{why} I felt the need to write
+this document.
+
+First, \emph{what is} \medusa-? \medusa- is a project started at the
+University of Udine (Italy).  The goal of \medusa- is to develop an
+open structure for efficient peer-to-peer (P2P) \emph{live streaming}.
+I am not going into details here why this is a cool idea and which
+kind of problems must be solved.  The important point that I want to
+emphasize here is that \medusa- is quite a complex piece of software
+that (I hope) will be maintained in the future by other developers
+(beside me).  Therefore, we need some documentation for those future
+developers.
+
+Let me say that I already modified open source software (sometimes for
+necessity, sometimes for fun).  My experience is that when you are
+trying to change a piece of software wrote by someone else, you do not
+need a verbose description of every single variable and line of code,
+but rather the ``big picture'' of the software.  Instead, often you
+find code which looks like (no kidding)
+
+\begin{verbatim}
+    int i, j;  /* Loop variables */       (really?!?)
+    count ++;  /* Increment count by 1 */ (Wow !)
+\end{verbatim}
+
+\noindent
+but no description of the ``high level structure'' of the software and
+you are left to yourself in finding the part you need to
+change\footnote{That can also be fun, mind you, unless you are in a
+rush\ldots}.  It is like entering a wood with a description of every
+single leaf, but no map.  Well, this document is the ``wood map.''
+
+\paragraph{A little warning}
+Currently (14th April 2008) \medusa- is still in a development stage
+and there is not a complete one-to-one match between this document and
+the current state of the software.  However, this document is a
+reliable information source about the \emph{future} state of the
+software.  (Remember that this document is aimed to future developers.)
+
+\section{Description levels}
+\label{sect:0.0;medusa_book}
+
+As I said, \medusa- is quite a complex piece of software.  The
+\medusa- suite is made of a client and a server, both are made of
+\emph{modules} that communicate among themselves, each module in turn
+is obtained by composing several libraries.  As you see, there is a
+lot to be documented\ldots
+
+Our approach will be to describe the internal structure of \medusa-
+going from the coarser level down to the most detailed one.  More
+specifically, we will talk about
+
+\begin{itemize}
+\item
+Motivation: why video streaming over P2P is such a cool idea and which
+problems (\emph{evanescence} and \emph{asymmetric bandwidth}) must be
+solved
+\item
+An overview of the algorithms used in \medusa- to 
+\begin{itemize}
+  \item
+    Solve the evanescence and asymmetric bandwidth problem
+  \item
+    Manage the P2P structure
+\end{itemize}
+\item
+A description of the communication protocol between peers and between
+the peers and the server
+\item
+A description of the internal modules of client and server
+\item
+A description of the communication protocol between the internal
+modules. 
+\item
+A high-level description of a possible internal structure of the most
+complex modules.
+\end{itemize}
+%
+\ldots and we stop here\ldots{} Further details would describe the
+actual implementation of each library composing each module, but we
+demand this level of detail to the single module documentation that
+you will find in the \texttt{doc} directory of the module (Yes! every
+module implementation has [will have] its own \texttt{doc} directory).
+Actually, in the current state some module has more than one
+implementation (typically one implementation is just a very primitive
+version of the module used for debugging purposes) and every
+implementation has its own internal details.
+
+
+\chapter{Preliminary remarks}
+
+%\section{Motivation and problem statement}
+%\label{sect:1;medusa_book}
+
+\section{Motivation}
+\label{sub:1.0;medusa_book}
+
+I could say that to know why P2P is an interesting solution to video
+streaming you just need to give a look to the introduction of papers
+in the literature \cite{deshpande01:_live_media_p2p} \cite{Octoshape}
+\cite{hei08:_iptv_p2p} \cite{liu08:p2p}.  Very
+briefly, the idea is that if you want to broadcast a video stream to a
+group of users via many unicast connections, you need a bandwidth
+equal to the video bandwidth multiplied by the number of users.  An
+alternative solution is to use IP multicast, but such a solution is
+not readily available for a number of reasons \cite{liu08:p2p}.  A
+solution which could be scalable and does not rely on network
+infrastructure (differently from the IP multicast solution) is a P2P
+approach where every new user behaves also as a server, replying the
+received signal.  In a sense, the P2P approach could be described as
+an ``application level multicast.''
+
+
+\section{Problems in P2P streaming}
+\label{sub:1.1;medusa_book}
+
+So, P2P is the ultimate solution to video streaming? Alas, no.  The
+fact that intermediate nodes are home PC and not real servers
+introduces some problems which must be solved in order to make P2P
+video streaming practical.
+
+\paragraph{Evanescence}
+The \emph{evanescence} problem is due to the fact that we cannot
+control how long a home user will remain connected.  If a node
+suddenly leaves, the nodes which were receiving data from it will
+receive no data anymore.  Although in a ``classical'' file-sharing P2P
+context this would cause only a delay in the download, in a video
+streaming application sudden departure of a node can cause an
+unacceptable loss of quality.
+
+\paragraph{Asymmetric Bandwidth}
+Typically a home user, connected via DSL to the Internet, has enough
+\emph{download} bandwidth to receive video data, but not enough
+\emph{upload} bandwidth to act as a video server.  A typical solution
+to the \emph{asymmetric bandwidth} problem is to split the file into
+pieces (called \emph{chunks}) and let a node download different chunks
+from different peers.\footnote{This description is maybe a little
+oversimplified, but it suffices in our context.  Refer to the
+literature for more details \cite{hei08:_iptv_p2p} \cite{liu08:p2p}.}
+The \emph{chunky} approach works fine in a file-sharing context, but
+its application is more delicate in the video streaming context
+because video data has an ``expiration date'' (i.e., play-out time)
+after which the data is useless \cite{liu08:p2p}.
+
+To solve this problem \medusa- introduces a \emph{chunkless} approach
+described in more detail in Section~\ref{sect:1.0;medusa_book} and
+\cite{bernardini08:dcc08}. 
+
+\paragraph{NAT and firewalls}
+Most of home PC are assigned private IP address by the Internet
+Service Provider (ISP). Such private address needs Network Address
+Translation (NAT) when the home PC must interact with hosts outside
+the ISP network.  The problem introduced by NAT in a P2P context is
+that NAT makes home PC unreachable from nodes which do not belong to
+the same subnetwork unless \emph{hole punching} techniques are
+employed \cite{UDP_hole}.
+
+Currently the NAT problem is not addressed in \medusa- (but it will
+be).
+
+\paragraph{Security}
+Relying on home users for distributing video data opens some security
+problems \cite{hei08:_iptv_p2p}.  Here we cite only the \emph{stream
+poisoning} threat where a malicious user sends random packets instead
+of video data.  Such packets will cause quality degradation and,
+possibly, will be propagated by other nodes.  The chunkless technique
+described in Section~\ref{sect:1.0;medusa_book} can take care of this
+problem. 
+
+
+\section{Differences between video streaming and file-sharing}
+\label{sub:1.2;medusa_book}
+
+It is worth to emphasize here the main differences between  video
+streaming and file-sharing, with respect to the P2P structure.
+
+\begin{description}
+  \item[Existence of a central node] In a file-sharing application one
+  would like to have a structure that is as distributed as possible,
+  since the requirement of a set of central nodes introduce a single
+  point of failure in the system.  In a video streaming application
+  there is a ``natural'' central node, that is, the host(s) of the
+  entity which wants to broadcast the video.
+
+  The existence of a central node simplifies several aspect of P2P
+  networks such as indexing and network management.
+%
+  \item[Data timeliness] In a file-sharing application the chunks of
+  data have no expiration time and a lowering of the bandwidth and/or
+  packet loss causes only longer download times.  In a video streaming
+  application data have an expiration time and any data lost or
+  arrived late can give rise to a (often unacceptable) quality
+  degradation.
+\end{description}
+
+\section{The \medusa- multimedia model}
+\label{sect:1.6;medusa_book}
+
+Our aim is to produce a general ``P2P streaming building block'' which
+can be used in a wide range of applications. The ``reduction''
+algorithm described in Section~\ref{sect:1.0;medusa_book} and the
+``Processing module'' included in the user program (see
+\fref{peer-internal}) are designed to be independent on the specific
+format.  It is worth to briefly describe the model I had in mind when
+I wrote these notes.
+
+\begin{description}
+  \item[The content] The user is interested in some \textbf{multimedia
+content} which is a collection of one or more \textbf{multimedia
+constituents}.  A \emph{constituent} is roughly defined as the data
+that one would feed as input to a player. Another possible definition
+is that a constituent is something you can assign a MIME type to. For
+example, a remote classroom application can have two constituents: one
+for the video showing the teacher and one for a vectorial
+representation of the slides used by the teacher.
+
+Note that if the video is encoded with a multiple description coder,
+the descriptions \emph{are not} constituents in the sense used here,
+since it is quite probable that all the descriptions will be feeded to
+a single (MD-enabled) player.  A similar remark applies also to the
+different resolutions in a scalable streams.
+\item[The stream] A constituent is a collection of
+  \textbf{streams}. Each stream is identified by a small
+  integer called \textbf{stream ID}. Examples of constituents
+  containing more than one stream are the output of scalable or
+  multiple description coders.  
+\item[The stream] Each stream is a sequence of \textbf{packets}. Each
+  packet in a stream is identified by a \textbf{timestamp}.  It is not
+  strictly necessary that there is a linear relationship between
+  packet timestamp and ``playing time'' (in seconds) although it is
+  reasonable to think that this will often be true.  The pair made of
+  the timestamp and the stream ID is the \textbf{packet ID}.  
+
+  Every packet carries also an \textbf{importance} field.  This field
+  can prove useful when the output bandwidth of a node is smaller than
+  its ``nominal'' value.  In such a case the node can decide to drop
+  the least important packets.  The importance field is wrote by the
+  content source on the basis, for example, of the additional
+  distorsion that would be experienced in case the packet was missed.
+  For example, in a scalable stream one could assign a smaller
+  importance to the descriptions carrying information about the finer
+  details in order to give precedence to the base layer.
+\item[The packet] A packet can be further divide into one or more
+  \textbf{components} and each component can be an \emph{analog
+  component} or  a \emph{binary component}.  Without attempting a
+  formal definition, we can say that while it can be acceptable to
+  reconstruct an analog component with some error, it is usually
+  unacceptable to reconstruct a binary component with error.  
+  Examples of  analog and binary components could be, respectively,
+  the DCT coefficient  and the motion vectors in a video stream.
+
+  Although it is not required, it reasonable to expect that data with
+  the same ``meaning'' will belong to the same component.  It is also
+  worth to emphasize that analog components can be ``degraded'' to
+  binary ones by considering them as simple ``sequences of bits.''  As
+  an extreme choice, one can consider each packet as a single binary
+  component.  Actually, it is quite probable that the first version of
+  \medusa- will allow only for single-component packets.
+\end{description}
+%
+\begin{commento}
+In the most common case (a
+single-description, non-scalable, video program) the concept of
+content, constituent and stream coincide (that is, the content has
+only one constituent which in turn contains only one stream).
+\end{commento}
+
+\chapter{Algorithms}
+\label{chap:0;medusa_book}
+
+\section{Overview of server-peer and peer-peer interaction}
+\label{sect:0.1;medusa_book}
+
+It is worth giving a rough overview of the interactions between peers
+and between the server and a peer according to the \medusa- protocol.
+
+\begin{enumerate}
+\item
+Suppose a new node desires to receive the multimedia content.  The
+first step is to contact the root server (\fref[a]{steps}).  The new
+node open a \emph{data port} which will be used to receive the data
+and a \emph{command port} used to receive commands from the server.
+The port numbers are sent to the root server with the join request.
+If the new node is behind a NAT it will also carry out a \emph{UDP
+hole punching} procedure \cite{UDP_hole}.
+\item
+The root server, after an authentication phase, begins transmitting
+the video data to the new node to allow for an immediate playback
+(\fref[b]{steps}).  
+
+Note that in \fref[b]{steps} the data flow is denoted with
+\emph{three} dashed lines.  Each line represents a stream with a 1/3
+of the bandwidth requested by the original multimedia stream,
+therefore the new node needs three streams to recover the video
+stream. The reason for splitting the original stream into substreams
+is that a typical home user has not enough upload bandwidth to
+transmit the whole data stream.  A substream is the \emph{quantum} of
+information that we can ask to the node to upload.  (How the original
+stream is partitioned in smaller substream is described in
+Section~\ref{sect:1.0;medusa_book}). In the example of \fref{steps} we
+suppose that each node is able to transmit at most two substreams.
+
+Finally, note that there is nothing magic in the number ``3'' used in
+\fref{steps} and that the original stream can be partitioned into any
+number of substreams.  The only constraint is that each substream must
+require a bandwidth not larger than the smallest upload capacity of a
+node. 
+\item
+While sending the video data to the new node, the root server searchs
+for some available peers which are asked so send data to the
+\emph{data port} of the new node (\fref[c]{steps}).  When the connection
+between the old peers and the new one is established, the server can
+stop sending data to the new peer (\fref[d]{steps}).
+\item
+If necessary, the server can ask the new node to send data to some old
+one (\fref[e]{steps} and (f)).
+\end{enumerate}
+%
+
+\pippolen=.48\textwidth
+\begin{figure}
+\begin{center}
+\begin{tabular}{cc}
+\framebox{\unafigura[\pippolen]{step_1}} 
+  & \framebox{\unafigura[\pippolen]{step_2}}\\
+(a)&(b)\\
+\framebox{\unafigura[\pippolen]{step_3}} 
+  & \framebox{\unafigura[\pippolen]{step_4}}\\
+(c)&(d)\\
+\framebox{\unafigura[\pippolen]{step_5}} 
+  & \framebox{\unafigura[\pippolen]{step_6}}\\
+(e)&(f)
+\end{tabular}
+\end{center}
+\caption{Steps for joining a \medusa- P2P network
+\label{fig:steps}}
+\end{figure}
+
+It is worth observing that with the proposed approach the client nodes
+are totally unaware of the P2P network structure.  This allows to
+change the server node allocation algorithm without changing the
+clients. 
+
+\begin{commento}
+  It is worth observing that many variations are possible on the
+  structure of \fref{steps}.  For example, in
+  \fref{struttura-provider} the video provider is supposed to have a
+  \emph{network} of video servers.  Each new user contacts a
+  \emph{dispatcher host} which allocates the new user to a
+  specific video server, maybe to the ``closest'' one.  
+\end{commento}
+
+\begin{figure}
+\centerline{\unafigura{struttura-provider}}
+\caption{A possible multi-server scenario.
+\label{fig:struttura-provider}}
+\end{figure}
+%
+
+\section{The chunkless approach}
+\label{sect:1.0;medusa_book}
+
+Our solution to  the asymmetric bandwidth problem (see
+Section~\ref{sub:1.1;medusa_book}) operates at the \emph{stream}
+level, that is, every stream in the multimedia content is processed in
+an independent way.  
+
+Our goal is to construct from a stream a set of smaller streams
+(called \emph{substreams} in the following), each one requiring a
+$1/\redfac$ of the bandwidth of the original stream.  Value $\redfac$
+will be called \emph{reduction factor}.
+
+\begin{example}
+What is a typical value for $\redfac$?  Suppose to transmit video at
+2~Mbit/s and that one can ask a home user to upload a maximum of
+256~Kbit/s.  This means that $\redfac$ must be at least $2\cdot
+2^{20}/2^{18} = 8$.  We can assume that values of $\redfac$ in the
+interval $10$--$20$ will be typical.
+\end{example}
+
+In order to reduce the bandwidth of a factor of $\redfac$ without
+resorting to chunks, \medusa- employs the following algorithm
+
+\begin{enumerate}
+\item
+Every multimedia stream is a sequence of packets and each packet is a
+sequence of bytes.  Let $K$ be an integer number (typically it will be
+$K=2$ or $K=4$) and consider every block of $k$ consecutive bytes in
+the packet as an element of finite field\footnote{Yes, folks! We need
+Galois fields! No way to avoid it, sorry\ldots} $\gf{2^{8K}}$.  Let
+$c_n$ be the $n$-th value obtained in this way.  Organize the $c_n$
+values in a matrix $\bfC$ with $\redfac$ rows and as many columns as
+needed. 
+%
+\begin{equation}
+\label{eq:0;medusa_book}
+\bfC = 
+ \left[
+   \begin{array}{ccc}
+     c_0           & c_{\redfac}   & \cdots \\
+     c_1           & c_{\redfac+1} & \cdots \\
+     \vdots        & \vdots \\
+     c_{\redfac-1} & c_{2\redfac-1} & \cdots \\
+   \end{array}
+ \right]
+\end{equation}
+%
+If needed, the last column is padded with zeros.
+\item
+At startup every node chooses a value $\redroot \in \gf{2^{8K}}$ at
+random and constructs the row vector
+%
+\begin{equation}
+\label{eq:1;medusa_book}
+\redvec = 
+\left[ 
+  \begin{array}{ccccc}
+    1 & \redroot & \redroot^2 & \cdots & \redroot^{\redfac-1}
+  \end{array}
+\right]
+\end{equation}
+%
+called \emph{reduction vector}.
+\item
+In order to reduce the packet size of a factor $1/\redfac$  the node
+left multiplies matrix $\bfC$ by the reduction vector $\redvec$ in
+order to obtain the \emph{reduced packet}
+%
+\begin{equation}
+\label{eq:2;medusa_book}
+\bfu = \redvec \bfC
+\end{equation}
+%
+Note that the number of entries in $\bfu$ is $1/R$ of the number of
+entries of $\bfC$.
+\item
+Reduced packet $\bfu$ is transmitted to other peers.
+\end{enumerate}
+%
+In order to recover the original packet a node uses the following
+algorithm
+\begin{enumerate}
+\item
+The node receives $\redfac$ reduced packets $\bfu_1$, \ldots,
+$\bfu_\redfac$ from $\redfac$ different peers.  Let the $n$-th reduced
+vector $\redvec_n$ be based on value $\redroot_n$, that is, 
+$\redvec_n = [1, \redroot_n, \cdots, \redroot_n^{\redfac-1}]$.
+\item
+To recover $\bfC$ the node solves linear system
+%
+\begin{equation}
+\label{eq:3;medusa_book}
+\begin{cases}
+  \bfu_1 &= \redvec_1 \bfC\\
+  \bfu_2 &= \redvec_2 \bfC\\
+  \vdots &\qquad \vdots\\
+  \bfu_\redfac &= \redvec_\redfac \bfC
+\end{cases}
+\end{equation}
+%
+via
+%
+\begin{equation}
+\label{eq:4;medusa_book}
+\bfC 
+=
+\commenta{\left[ 
+  \begin{array}{c}
+    \qquad \redvec_1 \qquad \\
+     \redvec_2  \\
+    \vdots\\
+     \redvec_\redfac  \\
+  \end{array}
+\right]^{-1}}{\redmtx^{-1}}
+\left[ 
+  \begin{array}{c}
+    \qquad \bfu_1 \qquad \\
+     \bfu_2  \\
+    \vdots\\
+     \bfu_\redfac  \\
+  \end{array}
+\right]
+\end{equation}
+\end{enumerate}
+
+\begin{commento}
+Equation \er{eq:4;medusa_book} requires the computation of the inverse
+of matrix $\redmtx$.  By writing matrix $\redmtx$ explicitly 
+%
+\begin{equation}
+\label{eq:5;medusa_book}
+\redmtx  =
+\left[ 
+  \begin{array}{ccccc}
+    1 & \redroot_1  & \redroot_1^2 & \cdots & \redroot_1^{\redfac-1} \\
+    1 & \redroot_2  & \redroot_2^2 & \cdots & \redroot_2^{\redfac-1} \\
+    \vdots & \vdots &    \vdots    &        & \vdots \\
+    1 & \redroot_\redfac  & \redroot_\redfac^2 
+          & \cdots & \redroot_\redfac^{\redfac-1} 
+  \end{array}
+\right]
+\end{equation}
+%
+it is easy to see that it is a Wandermonde matrix which is granted to
+be invertible as soon as all the $\redroot_n$ values are different.
+
+It is also worth observing that matrix $\redmtx$ depends only on the
+reduction vectors $\redvec_n$ which in turn depend only on the peers
+which are sending us data.  Since the peer set is not likely to change
+frequently, one can compute the inverse of $\redmtx$ once and cache
+the result.
+\end{commento}
+
+\subsection{Robustness to node departure and poisoning attack}
+\label{sub:1.0.0;medusa_book}
+
+The chunkless approach give us (almost) for free a way to protect us
+against the evanescence problem and the poisoning attack.
+
+\begin{description}
+\item[Evanescence]
+To gain robustness against sudden node departures and/or packet
+losses, it suffices to contact a number of peer $\npeers >
+\redfac$. It is clear that \er{eq:4;medusa_book} can be applied as
+soon as we receive data from at least $\redfac$ out of $\npeers$.  In
+particular, if one node suddenly leaves, we are still able to recover
+the video data.
+\item[Poisoning]
+To defend ourselves against the poisoning attack we\ldots{} still
+contact a number of peer $\npeers > \redfac$.  To check if we are
+victim of a poisoning attack it suffices
+\begin{enumerate}
+\item
+Reconstruct $\bfC$ using \er{eq:4;medusa_book} and a subset of
+$\redfac$ reduced vectors (for example, $\bfu_1$, \ldots, $\bfu_\redfac$).
+\item
+Multiply the reconstructed $\bfC$ by the reduction vectors relative to
+the packets not used at previous step (for example,
+$\redvec_{\redfac+1}$, \ldots, $\redvec_\npeers$) and check that the
+resulting vectors coincide with received data.  If there is some
+discrepancy, someone is trying to ``poison'' us. We can also easily
+find who is the poisoner.
+\end{enumerate}
+%
+\end{description}
+
+\subsection{Extensions}
+\label{sub:1.0.1;medusa_book}
+
+The first version of \medusa- will employ the procedure described
+above to create the substreams.  However, we plan in the future an
+extended version of such an approach, here briefly discussed.
+
+The data in a generic multimedia packet can be partitioned according
+to their ``nature.'' Some data are related with the samples of the
+multimedia signal and have a ``analog'' nature, while some other data
+have an inherently ``binary'' nature.  An example of analog data could
+be the DCT coefficient in a video stream, while an example of binary
+data could be any header information.  The main difference between the
+two types of data is that it could be acceptable to reconstruct analog
+data with some error, but it is usually unacceptable to reconstruct
+binary data with errors.  
+
+In the more general approach packet reduction is carried out as
+follows
+
+\begin{enumerate}
+\item
+The packet is split into analog and binary components.  Note that a
+single packet can have \emph{any} number of analog/binary components.
+\item
+Each binary component is reduced according to the algorithm described
+in Section~\ref{sect:1.0;medusa_book}.  Note that different binary
+component can be reduced by using different reduction factors.  For
+example, a smaller reduction factor can be used with the most
+important binary components, in order to be able to reconstruct them
+even if fewer packets are received.
+\item
+Each analog component is reduced according to an algorithm similar to
+the one described in Section~\ref{sect:1.0;medusa_book}, but using
+real (or complex) numbers instead of finite field elements.  The
+result of the reduction is successively encoded in a binary string.
+\item
+All the reduced components (binary and analog) are collected into a
+single packet which is sent to other peers.
+\end{enumerate}
+%
+
+\section{P2P management: the onion skin approach}
+\label{sect:1.1;medusa_book}
+
+As already said, the \medusa- client is totally unaware of the P2P
+network topology and any network structure could be used without
+changing the client.  Nevertheless, in order to make a complete suite,
+it is necessary to decide also the P2P topology.
+
+For the sake of description simplicity we will suppose, for the
+moment, that every peer is capable to output at most $\peercap$
+reduced streams.  Some important requirements on the P2P
+topology are
+
+\begin{description}
+  \item[Efficiency] The node output bandwidth must be exploited as
+  much as possible (that is, the percentage of nodes which emits less than
+  $\peercap$ reduced streams must be small) since any bandwidth not
+  covered by the P2P network must be provided by the root server.
+  \item[Small diameter] The \emph{diameter} of the network (i.e., the
+  largest number of intermediate nodes between any two nodes of the
+  network) must be small, since every ``hop'' between adjacent nodes
+  introduce a delay and the larger the diameter, the greater the
+  maximum delay introduced by the network.
+  \item[No loops] Obvious requirement.
+  \item[Light-weight management] It must be easy to add a new node and
+  to ``repair'' the network when a node leaves.  Light-weight is to be
+  interpreted both in terms of server computational cost and number of
+  messages sent over the network.
+\end{description}
+
+\medusa- server  constructs the P2P network by following a ``onion
+skin'' approach.  More precisely,
+
+\begin{enumerate}
+\item
+Denote with $e_i$ the $\peercap$-dimensional vector whose components
+are equal to zero, with the exception of $i$-th
+component which is equal to $1$.
+\item
+To every peer $\peer n$ is assigned an $\peercap$-dimensional 
+vector  $\idvec n$ of positive integers.
+\item
+Peer $\peer n$ sends a substream to peer $\peer m$ if $\idvec m =
+\idvec n+e_i$ for some $i$.
+\item 
+ID vectors $\idvec n$ are assigned in an ``onion skin'' fashion,
+according to the infinite norm.  More precisely, a vector $\idvec n$
+with
+%
+$$
+\normainf{\idvec n}
+  = \max_{k} \abs{(\idvec n)_k} = A
+$$
+%
+can be allocated only after all the vectors with norm less than $A$
+have been allocated.
+\end{enumerate}
+%
+\begin{remarks}
+\remark
+\fref[a]{skin} shows an example of the onion skin allocation procedure
+in the case $\peercap=2$.  A circle centered on point $(n,m)$
+represents the node with vector ID equal to $[n, m]$. The arrows show
+the data-flow direction, while the numbers inside the circles show the
+allocation order.  Each skin is labeled with infinite norm of the
+points belonging to the skin.  \fref[a]{skin} shows the network
+structure after the joining of the 14-th node (dashed nodes denote
+still-to-be-allocated positions).  Note that in \fref[a]{skin} the
+nodes in a skin are allocated in a counter-clockwise order, but this is
+not necessary.  
+\remark
+An example of data-flow in a
+\medusa- network with $\peercap=3$ can be seen in \fref[b]{skin}.
+\end{remarks}
+
+\begin{figure}
+\begin{center}
+\begin{tabular}{c}
+\framebox{\unafigura{rete-2d}} \\[1.5em] (a) \\[1.5em]
+\framebox{\unafigura{rete-3d}} \\[1.5em] (b)
+\end{tabular}
+\end{center}
+\caption{Example of \medusa- P2P network topology. (a) Case
+  $\peercap=2$ (b) Case
+  $\peercap=3$
+\label{fig:skin}}
+\end{figure}
+
+\subsection{Repairing an onion skin network}
+\label{sect:0.2;medusa_book}
+
+Repairing an onion skin network is quite easy
+
+\begin{enumerate}
+\item
+When a node leaves the network the root server is notified.  The
+notification can arrive
+\begin{itemize}
+  \item
+    From the leaving node itself, if the node is leaving because the
+    user is stopping the client
+  \item
+    From the neighbor nodes, if the node left without notice
+    (e.g. because of a crash)
+\end{itemize}
+\item
+The missing node leaves a ``hole'' in the network.  The server repair
+it by taking a node from the most external skin and ``moving'' it in
+the place of the leaving node.  
+
+The procedure for ``moving'' peer $\peer n$ in place of $\peer m$ is
+the following
+
+\begin{enumerate}
+  \item
+    Ask to  $\peer n$  to send data to the nodes which were
+    served by $\peer m$
+  \item
+    Ask the nodes which were serving $\peer m$ to redirect their
+    data to $\peer n$
+  \item
+    Ask the nodes which were serving $\peer n$ to close
+    the transmission
+\end{enumerate}
+\end{enumerate}
+%
+
+\subsection{Peers with different upload capabilities}
+\label{sub:1.1.0;medusa_book}
+
+So far we supposed that every peer in the network has not enough
+upload bandwidth to transmit a complete video stream.  Since the total
+\emph{download} bandwidth must be equal to the total \emph{upload}
+bandwidth, it is easy to see that within such an hypothesis the P2P
+network cannot sustain itself and the missing bandwidth must be
+provided by the root server.  If the P2P network is going to be
+self-sufficient, some nodes must have an upload bandwidth
+\emph{greater} than the bandwidth required by the multimedia stream.
+
+It is worth to see how the onion-skin approach can be modified in
+order to exploit the presence of nodes with a larger upload
+bandwidth. Let $\redfac$ be the reduction factor used in the reduction
+algorithm and suppose that to gain reliability we plan to have each
+node receiving $\npeers > \redfac$ substreams.  Suppose also that the
+nodes can be partitioned into two classes: a \emph{small-bandwidth}
+(SBW) class that can transmit $\locap < \redfac$ substreams and a
+\emph{large-bandwidth} (LBW) class that can transmit $\hicap >
+\npeers$ substreams.  Summarizing,
+%
+\begin{equation}
+\label{eq:6;medusa_book}
+\hicap > \npeers > \redfac > \locap
+\end{equation}
+%
+Define also quantities
+%
+\begin{subequations}
+\label{eq:7;medusa_book}
+\begin{eqnarray}
+\label{eq:7a;medusa_book}
+ \defect &=& \npeers-\locap  \\
+\label{eq:7b;medusa_book}
+ \excess &=& \hicap-\npeers  
+\end{eqnarray}
+\end{subequations}
+%
+called respectively \emph{defect} and \emph{excess}.
+
+The idea is to organize SBW nodes and LBW nodes in two different
+onion-skin networks.  Since each LBW node can transmit $\hicap >
+\npeers$ substreams, the LBW can be organized in a
+$\npeers$-dimensional self-sustaining networks and use the $\excess$
+streams per node that remain available to feed the SBW nodes.  Note
+that every SBW node needs to receive $\defect$ more substreams in
+order to have a complete set of $\npeers$ substreams.  We want the
+$\defect$ additional substreams to come from $\defect$ different LBW
+nodes, in order to gain robustness with respect to node departure.
+
+A possible approach to assign SBW nodes to LBW nodes is the
+following.  Suppose $\peer L$ is the $n$-th node in the LBW network.
+Node $\peer L$ will transmit to SBW nodes whose index is
+%
+\begin{equation}
+\label{eq:8;medusa_book}
+\excess \floor{\frac n \defect} + \alpha,
+\qquad \alpha=0, 1, \ldots, \excess-1
+\end{equation}
+%
+For example, suppose $\excess=3$ and $\defect=2$. The mapping between
+LBW and SBW indexes is as follows
+%
+\begin{center}
+  \begin{tabular}{l|*{6}c}
+    LBW source & 0 & 1 & 2 & 3 & 4 & 5
+\\ \hline
+    SBW destinations &
+0,1,2 & 0,1,2 &
+3,4,5 & 3,4,5 & 
+6,7,8 & 6,7,8 
+  \end{tabular}
+\end{center}
+%
+Note that each SBW node receives from $\defect=2$ LBW nodes and that
+each LBW node transmits to $\excess=3$ different nodes.
+
+\chapter{Protocols}
+\label{chap:1;medusa_book}
+
+\section{Root server-peer protocol}
+\label{sect:1.3;medusa_book}
+
+\subsection{General remarks}
+\label{sub:1.3.2;medusa_book}
+
+It is worth beginning with an informal description of the main
+characteristics of the protocol.
+
+\begin{itemize}
+\item
+The message exchanged between the peers and the server are text lines.
+Messages share the following common format
+%
+\begin{verbatim}
+     <command> <timestamp> <p1> ... <pN> <CRC32>
+\end{verbatim}
+%
+where 
+\begin{center}
+\begin{tabular}{p{0.25\textwidth}p{0.5\textwidth}}
+  \texttt{<command>}\dotfill&denotes the message type\\
+  \texttt{<timestamp>}\dotfill&is an increasing hexadecimal number\\
+  \texttt{<p1>\ldots<pN>}\dotfill&are the command parameters\\
+  \texttt{<CRC32>}\dotfill&is an hexadecimal number representing the
+  result of computing the CRC32 of the remainder of the line
+\end{tabular}
+\end{center}
+%
+\item
+Fields in the command line are separated by spaces.  If a parameter
+can accept any type of strings (e.g., the \texttt{URI} field in
+command \texttt{STRT} in the following), spaces and percent signs are
+encoded URL-like (i.e., the space is denoted with \texttt{\%20} while
+the percent sign with \texttt{\%25}).
+\item
+A special type of message is the \texttt{RPLY} command, used to reply
+to other commands.  The general structure the \texttt{RPLY} command is
+%
+ \begin{verbatim}
+    RPLY <timestamp> <command> <timestamp2> <p1> ... <pN> <CRC32>
+\end{verbatim}
+%
+where \texttt{<timestamp>} is the timestamp associated to the
+\texttt{RPLY} message, \texttt{<command>} and \texttt{<timestamp2>}
+are, respectively, the first and second fields of the
+message we are replying to.
+\end{itemize}
+%
+In the following we are going to describe all the messages currently
+implemented.  In order to make the description precise, we are going
+to use the Augmented Backus-Naur Form (ABNF) described in the RFC
+5234 \cite{rfc5234}.\footnote{See
+  \texttt{http://www.ietf.org/rfc/rfc5234.txt}.} 
+Remanding to the original document for a formal description of the
+ABNF, the main points of the RFC are summarized, for the convenience
+of the reader, in Appendix~\ref{chap:3;medusa_book}.  
+
+The basic rules given in B.1 (Core Rules) of RFC 5234 \cite{rfc5234}
+will be used.  Among them we recall here
+
+\begin{verbatim}
+  ALPHA          =  %x41-5A / %x61-7A   ; A-Z / a-z
+  DIGIT          =  %x30-39             ; 0-9
+  HEXDIG         =  DIGIT / "A" / "B" / "C" / "D" / "E" / "F"
+  SP             =  %x20                ; ASCII space
+  LF             =  %x0A                ; ASCII line-feed
+  CR             =  %x0D                ; ASCII carriage return
+  EOT            =  %x04                ; ASCII end-of-text
+  OCTET          =  %x00-FF             ; Generic byte
+  VCHAR          =  %x21-7E             ; visible characters
+\end{verbatim}
+%
+Finally, in order to simplify the description of some rule, we extend
+the ABNF of \cite{rfc5234} with the following rule: if \ttt rule! is
+the name of a rule which always evaluate to a string representing an
+integer value, \verb-{rule}- allows to use such an integer in other
+rules. For example, in the following we define an array of integers as
+follows
+
+\begin{verbatim}
+  integer    = 1*DIGIT
+  array-int  = length  {length}(SP element)
+  length     = integer
+  element    = integer
+\end{verbatim}
+%
+According such rules, a \ttt array-int! is an integer value (\ttt
+length!) representing the array length, followed by \ttt length!
+integers (\ttt element!) separated by spaces (\ttt SP!). Without this
+extension it would not be possible to express the constraint that the
+number of \ttt element! must be equal to the value of \ttt length!.
+
+\subsection{Common definitions}
+\label{sub:1.3.3;medusa_book}
+
+\begin{verbatim}
+  integer    = 1*DIGIT                    ; decimal integer
+
+  array-int  = length  {length}element    ; Array of integers
+  length     = integer
+  element    = integer
+
+  ID-CHAR    = ALPHA / DIGIT / "-" / "_"  ; chars used in identifiers
+  name       = 1*ID-CHAR                  ; generic identifier
+
+  base64-data = 1*base64-char
+  base64-char = ALPHA / DIGIT / "+" / "/" / "="
+
+  timestamp  = 6HEXDIG
+  crc32      = 8HEXDIG
+
+  address    = (ip-address port-type port) / bogus-addr
+
+  bogus-addr = "X"
+
+  ip-address = 8HEXDIG
+  port       = 4HEXDIG
+  port-type  = "T" / "U" / "X"            ; T -> TCP port
+                                          ; U -> UDP port
+                                          ; X -> Invalid (used to 
+                                          ;      specify "no port")
+
+  node-id    = array-int
+\end{verbatim}
+
+\subsection{From server to peer}
+\label{sub:1.3.1;medusa_book}
+
+\subsubsection{Authentication request}
+\label{subsub:1.3.1.2;medusa_book}
+
+\paragraph{Syntax}
+\begin{verbatim}
+  auth        = "AUTH" SP timestamp SP challenge [SP signature] 
+                  SP crc32 EOT
+  challenge   = base64-data
+  signature   = algorithm "-" encr
+  algorithm   = name
+  encr        = base64-data
+\end{verbatim}
+
+\paragraph{Semantic}
+
+When a user contacts the server with a \ttt STRT! command the server
+can ask the user to authenticate itself via a \ttt AUTH! request.  The
+authentication algorithm is more or less a standard challenge-based
+procedure.  More precisely,
+  \begin{enumerate}
+    \item
+      Each user has a \ttt username! and a \ttt password!
+    \item
+      Upon reception of the \ttt AUTH! request the user concatenates
+      its \ttt username!, its \ttt password! and the \ttt challenge!
+      found in the \ttt AUTH! request.  The resulting string is
+      processed via MD5 (maybe in a future we will use other hash
+      functions). 
+   \item
+      The hashed value is sent back to the server together with the
+      \ttt username! in a \ttt RPLY! command.
+   \item
+      The server computes the hash by using the \ttt username! found
+      in the \ttt RPLY! command and the password associated with the
+      user.  If the two hashes are equal, the user is accepted.
+  \end{enumerate}
+  Note that with this approach the user is authenticated to the
+  server, but the server is not authenticated.  The optional field
+  \ttt signature! is reserved for this.  To compute the \ttt
+  signature! field the server
+  \begin{enumerate}
+    \item
+       Pad (at one side or both) the challenge field with some random
+       data and encrypt the result with some asymmetric algorithm.
+       Encode the result in \ttt BASE64! \cite{rfc4648}.  The result
+       is represented by rule \ttt encr!
+    \item
+       Prepend the result with the algorithm name followed by a
+       ``minus'' sign \ttt-!.
+    \item
+      The client can verify the correctness of the \ttt signature!
+      field by knowing the public key of the server.
+  \end{enumerate}
+
+\subsubsection{Node ID}
+\label{subsub:1.3.1.3;medusa_book}
+
+\begin{verbatim}
+  id = "ID"   SP timestamp SP node-id SP crc32 EOT  
+\end{verbatim}
+If the server accepts the new node, it assigns it an ID
+  vector (see description of the P2P structure in
+  Section~\ref{sect:1.1;medusa_book}).  With this command the server
+  communicates to the new node its ID vector.
+
+\subsubsection{P2P management}
+\label{subsub:1.3.1.4;medusa_book}
+
+\begin{verbatim}
+  peer-list   = "PEER" SP timestamp addr-list SP crc32 EOT
+  addr-list   = 1*(SP address SP stream-id)
+  
+  send        = "SEND" SP timestamp SP stream-id SP address 
+                   SP crc32 EOT
+  stream-id   = integer
+  
+  receive     = "RECV" SP timestamp SP port SP source-id 
+                   SP crc32 EOT
+  source-id   = node-id / "X"
+\end{verbatim}
+
+\paragraph{Semantic}
+Current protocol structure 
+
+\begin{description}
+  \item[PEER]
+Used to transmit to the node a list of possible
+  peers. \notainterna{To be written} 
+\item[RECV] When the server asks (with a \ttt SEND! command) to source
+  peer $\peer S$ to send data to destination peer $\peer D$, it sends
+  also a \ttt RECV! command to $\peer D$ to announce it that it is
+  going to receive data on port number \ttt port! from the peer whose
+  ID is \ttt source-id!.  This command is necessary if the node is
+  expected to warn the server (with a \ttt LEFT! command) when it
+  stops receiving data from peer $\peer S$.
+
+  If $\peer S$ announces its departure (with a \ttt BYE! command) or
+  if the server asks (with a \ttt SEND!  command) to source peer
+  $\peer S$ to stop data transmission toward $\peer D$, the server
+  sends a \ttt RECV! command to $\peer D$ with \ttt source-id! equal
+  to \ttt X! to warn node  $\peer D$ that it will receive no more data
+  from $\peer S$.  This will avoid $\peer D$ to send useless
+  \ttt LEFT! commands.
+\item[SEND]  With this command the server requires to the node to send
+  its stream number \ttt stream-id! (a positive integer not greater
+  than the \ttt capacity! value declared by the node with the \ttt
+  STRT! command) to the port described by field \ttt address!.  If
+  \ttt address! is an invalid address (that is, it is the single char
+  \ttt X! or its \ttt port-type! is \ttt X!) the stream number \ttt
+  stream-id! is closed.
+\end{description}
+
+\subsubsection{Function definition}
+\label{subsub:1.3.1.5;medusa_book}
+
+\paragraph{Syntax}
+\begin{verbatim}
+  function-def  = "FUNCTION" SP timestamp SP function-name 
+                    SP function-code [SP language] SP crc32 EOT
+  function-name = name
+  function-code = base64-data
+  language      = name
+\end{verbatim}
+
+\paragraph{Semantic}
+
+In a few places of \medusa- it is necessary to specify how to process
+data.  For example, analog components must be encoded in order to be
+transmitted to other peers.  In order to keep the \medusa- engine as
+general as possible, this document does not fix the encoding
+procedure, but allows the server to communicate it to the clients by
+declaring the encoder ``name'' via the \ttt ENCODER! attribute of the
+\ttt MMEDIA! command.  Another example of server-specified processing
+is how to reconstruct a multimedia packet from the set of the
+corresponding components (attribute \ttt COMPOSER! of the \ttt MMEDIA!
+command). 
+
+Although it is reasonable to assume that one or more ``standard''
+processing procedures, in order to keep the client as general as
+possible, the protocol includes the command \ttt FUNCTION!  which
+allows the server to send to the user a new function to be used in
+packet processing.
+
+Field \ttt function-name! is the name of the function.  \ttt
+function-code! is the ``binary code'' of the function described in
+some language which is still to be defined, most probably some kind of
+``virtual machine code'' (e.g. the bytecode of \ttt Lua!\footnote{\ttt
+http://www.lua.org/!} or GNU CLISP\footnote{\ttt
+http://clisp.cons.org/!}).  One could also imagine a less general
+but more efficient language, specifically tailored to the data
+processing problem.  In order to allow for different languages, we
+introduced the option \ttt language! field.
+
+\subsubsection{Content description}
+
+\paragraph{Syntax}
+\begin{verbatim}
+  mmedia      = "MMEDIA" SP timestamp SP *(mmedia-attr SP) crc32 EOT
+  mmedia-attr = mmedia-nconst / stream-comp / mmedia-mime /
+                   mmedia-composer / const-mime-type / mmedia-type /
+                   mmedia-struct / const-struct / stream-struct
+
+  constituent-id  = integer
+  stream-id       = integer
+  class-id        = integer
+
+  mmedia-nconst   = "N-CONSTITUENTS" SP integer
+  const-nstreams  = "N-STREAMS" SP integer [SP constituent-id]
+  stream-classes  = "N-CLASSES" SP integer [SP stream-id [SP constituent-id]]
+
+  mmedia-struct   = "MMEDIA-STRUCT" SP mime-name
+  const-struct    = "CONSTITUENT-STRUCT" SP mime-name [SP constituent-id]
+  stream-struct   = "STREAM-STRUCT" SP mime-name
+                       [SP stream-id [SP constituent-id]]
+
+  const-mime-type = "CONTENT-TYPE" SP mime-type [SP constituent-id]
+  constituent-id  = integer
+
+  pkt-components  = "COMPONENTS" SP *(component-decl ":") component-decl
+                      [SP class-id [SP stream-id [SP constituent-id]]]
+  component-decl  =  component-type R-factor
+  component-type  = "A" / "B"
+  R-factor        = integer
+
+  comp-encoder    = "ENCODER" SP encoder [SP decoder] SP component-id 
+                      [SP class-id [SP stream-id [SP constituent-id]]]
+  encoder  = name
+  decoder  = name
+
+  mmedia-composer = "COMPOSER" SP composer-name [SP stream-id]
+  composer-name   = name
+\end{verbatim}
+
+\paragraph{Semantic}
+\label{subsub:1.3.1.1;medusa_book}
+ Used to describe to the node the structure of the
+  multimedia content
+  \begin{description}
+    \item[N-CONSTITUENTS] Number of constituents of the multimedia
+    content.  By default the content has only one constituents.  Each
+    constituent is uniquely determined by its ID, an integer between 0
+    and the number of constituents minus one.
+    \item[N-STREAMS] Number of streams in a constituent.  If only one
+    constituent is present, the \ttt constituent-id! can be omitted.
+    Each stream in a constituent is determined by its ID. By default
+    each constituent has only one stream. 
+    \item[N-CLASSES] Number of packet classes in a stream.  By default
+    each stream has only one packet class.  \ttt stream-id! \ttt
+    content-id! can be omitted if only one stream/constituent is present.
+    \item[CONTENT-TYPE] Declare the \ttt mime-type! of a constituent.
+    \item[COMPONENTS] Describe the components in a given class of
+    packets.  The string \ttt COMPONENTS! is followed by a list of
+    strings of form \ttt component-type R-factor! separated by colons
+    (with no spaces in between).  \ttt component-type! can assume
+    values \ttt A! (for analog components) or \ttt B! (for binary
+    components).  \ttt R-factor! is the reduction factor applyied to
+    the component.  For example, the string
+
+    \begin{center}
+      \ttt COMPONENTS B4,A5,B3 2 4!
+    \end{center}
+    declares that the packets of class 2 of the stream 4 of content 0
+    (by default) are partitioned into three components: two binary
+    components (with reduction factors equal to 4 and 3) and one
+    analog component (with reduction factor equal to 5).
+    \item[ENCODER] Define the encoder/decoder pair to be used for a
+    given component.   Typically we can expect that each encoder will
+    have a corresponding default decoder.  Alternatively, the decoder
+    can be esplicitely declared.  The default encoder for binary
+    components is the trivial encoder.  No default encoder is defined
+    for analog components.
+    \item[COMPOSER] Define the composer to be used for reconstructing
+    the multimedia packets from their components.  If stream packets
+    have only one binary component, the default composer is the
+    trivial one.  No default composer is defined for the other cases.
+  \end{description}
+
+
+\subsection{From peer to server}
+\label{sub:1.3.0;medusa_book}
+
+\paragraph{Syntax}
+\label{subsub:1.3.0.0;medusa_book}
+
+\begin{verbatim}
+  peer-msg   = strt / rply-auth / bye / left
+
+  strt       = "STRT" SP timestamp SP URL SP data-port SP
+                  ctl-port SP capacity SP crc32 EOT
+  data-ports = array-int
+  ctl-port   = 4HEXDIG
+  capacity   = integer
+             ; URL is not defined here. See RFC 1738
+
+  rply-auth  = "RPLY" SP timestamp SP "AUTH" SP timestamp SP
+                  username SP hash SP crc32 EOT
+  username   = 1*VCHAR
+  hash       = 1*HEXDIG
+
+  bye        = "BYE"  SP timestamp SP node-id SP crc32 EOT
+
+  left       = "LEFT" SP timestamp SP node-id SP crc32 EOT
+\end{verbatim}
+
+\paragraph{Semantic}
+\label{subsub:1.3.0.1;medusa_book}
+
+\begin{description}
+  \item[STRT]  This is the command sent to the server when a node
+  wants to join the P2P network.  The meaning of the fields is as
+  follows
+  \begin{description}
+    \item[\ttt URL!] Identifies the ``program'' that the user wants
+    to watch.
+    \item[\ttt data-ports!] The number (in hexadecimal format) of the
+    UDP ports used by the peer to receive data from other peers.
+    \item[\ttt ctl-port!]
+    The number (in hexadecimal format) of the
+    UDP port used by the peer to receive commands from the server and
+    other peers. 
+    \item[\ttt capacity!] The number of substreams that the peer is
+    able to send.
+  \end{description}
+  \item[RPLY to AUTH] Used to reply to the \ttt AUTH! request. \ttt
+  username! is \ldots{} well\ldots{} the name of the user, while the
+  field \ttt hash! is obtained by hashing the username, the password
+  and the challenge.  See explanation of command \ttt AUTH!  in
+  Section~\ref{subsub:1.3.1.1;medusa_book} for more details.
+  \item[BYE] Sent to the server when the node is going to leave. Field
+  \ttt node-id! is the ID that the node received from the server with
+  the command \ttt ID! 
+  \item[LEFT] Sent to the server when a node suddenly stop receiving
+  data from a peer. \ttt node-id! is the ID of the disappeared node.
+\end{description}
+
+\section{Inter-peer protocol}
+\label{sect:1.4;medusa_book}
+
+\subsection{Commands}
+\label{sub:1.4.1;medusa_book}
+
+\begin{verbatim}
+  rv-idx = "RVIDX" SP vect-index [SP function-name] 
+              [SP component-id [SP class-id [SP stream-id]]]
+  function-name = name
+  vect-index    = integer
+\end{verbatim}
+
+\begin{description}
+  \item[RVIDX]  With this command a source peer communicates to a
+  destination peer the index of the reduction vector used for the \ttt
+  component-id!-th component of packets of class \ttt class-id! in the
+  \ttt stream-id!-th stream.  As usual, all the ``\ttt-id!'' values
+  default to 0.
+
+  Index \ttt vect-index! is mapped to the actual reduction vector by a
+  function \ttt function-name!. Field \ttt function-name! can be a
+  ``builtin'' function or it can be a function defined by the root
+  server with the command \ttt FUNCTION!. If \ttt function-name! is
+  missing the following default is used
+  \begin{itemize}
+  \item
+  If the component is a binary one and the chosen field is $\gf{2^d}$,
+  the base $b$ for the reduction vector is polynomial
+  $\sum_{n=0}^{d-1} b_k x^k$, where $b_k \in \{0,1\}$ and $b_{d-1}
+  b_{d-2} \cdots b_0$ is the binary expansion of \ttt integer!
+  ($b_{d-1}$ is the most significant bit).  
+  \item No default function is (currently) defined for the analog case
+  \end{itemize}
+\end{description}
+
+\subsection{Data}
+\label{sub:1.4.2;medusa_book}
+
+Currently the only data exchanged between different peers is the data
+relative to reduced packets.  In order to describe the inter-peer data
+format, we will use an \ttt Ada!-like format.  We decided for this
+solution, rather then using other standars such XDR
+\cite{rfc4506}\footnote{See \ttt
+  ftp://ftp.rfc-editor.org/in-notes/std/std67.txt!} since in the \ttt
+Ada! version is more explicit the way fields are mapped into bits.
+Multibyte data (e.g. \ttt Timestamp! in \ttt Network_Packet!) are
+stored in network order (i.e., big endian order).
+
+%%- use the External Data Representation Standard (XDR)
+%%- described in RFC 4506 \cite{rfc4506}.\footnote{See \ttt
+%%- ftp://ftp.rfc-editor.org/in-notes/std/std67.txt!} Since XDR is very
+%%- C-like, we do not include here a summary of it. 
+%%- 
+%%- A drawback of XDR is that the minimum data size (32 bits) is too
+%%- coarse-grained for us.  Because of this, we extend XDR by adding three
+%%- data types: \ttt bit!, \ttt byte!  and \ttt short! (16 bit).  The byte
+%%- order in a \ttt short!  is similar to the byte order in an \ttt int!
+%%- in XDR: first the most significant byte, then the least one.
+
+\paragraph{Syntax}
+
+\begin{verbatim}
+  -- Structure of a packet exchanged between peers
+  for Network_Packet'Bit_Order use High_Order_First;
+  for Network_Packet use
+    record
+      Data_Pkt     at 0 range 0..0; -- Always 1
+      Reserved     at 0 range 1..3; -- Always 0
+      N_Components at 0 range 4..7;
+
+      -- Constituent  at 1 range 0..3; -- Maybe not present
+      -- Stream       at 1 range 4..7; -- 
+
+      Class        at 1 range 0..3;
+      Priority     at 1 range 4..7;
+
+      Timestamp    at 2 range 0..31;
+
+      Payload      at 7 range 0..end;
+    end record;
+
+
+
+  -- Structure of a single component 
+  for Network_Packet'Bit_Order use High_Order_First;
+  for Network_Crumb use
+    record
+       Explicit_RV   at 0 range 0..0;  -- 1 if RV explicitely given
+       Payload_Size  at 0 range 1..15;
+
+       case (Explicit_RV)
+         when 0 => 
+            Payload       at 1 range 0..Payload_Size*8;
+         when 1 => 
+            RV_Index      at 2 range 0..31;
+            Payload       at 6 range 0..Payload_Size*8;
+       end case;
+    end record;
+\end{verbatim}
+
+\paragraph{Semantic}
+\label{subsub:1.4.0;medusa_book}
+
+%\begin{figure}
+%\centerline{\unafigura{info-byte}}
+%\caption{Outline of the \ttt info! field in \ttt network\_packet!
+%\label{fig:info-byte}}
+%\end{figure}
+%%
+\begin{description}
+  \item[\ttt Network\_Packet!]  This \ttt struct! shows the structure
+  of the packets which are sent from one peer to the other.  There is
+  one-to-one correspondence between  \ttt
+  network\_packet!'s and the packets in the original multimedia
+  stream.  Each \ttt network\_packet! is obtained by first decomposing
+  the multimedia packet into components, reducing each component and
+  finally collecting all the reduced components in a single \ttt
+  network\_packet!.  The meaning of the fields is the following
+  \begin{description}
+    \item[\ttt Data\_Pkt!] The most significant bit of the first byte
+    of a data packet is always equal to 1.  This allows to
+    distinguish in an easy way data packet from command packet: since
+    command packet contains 7-bit ASCII text, the bit corresponding to
+    \ttt Data\_Pkt! will always be 0.
+    \item[\ttt Reserved!] Three bits reserved for future extensions.
+    They MUST be set to zero.
+    \item[{\ttt N_Components!}] The number of \emph{crumbs}
+    (components reduced and encoded) contained in this packet.
+    \item[\ttt Constituent!] The ID of the constituent this packet
+    belongs to.  We are not sure if the final version will contain
+    this information or if this information will be implicitly bound
+    to the port we receive the packets from.  At the moment, we are
+    more oriented for the latter solution.
+    \item[\ttt Stream!] The ID of the stream this packet
+    belongs to.  See remark about the \ttt Constituent! field.
+    \item[\ttt Class!] This field allows one to distinguish
+    between different packet types in the same stream.  For example,
+    in a video stream one could distinguish between packets relative
+    to I, P or B frames.
+    \item[\ttt Priority!]  This field can be used by rate control
+    algorithms to decide which packets can be ``sacrificed'' in order
+    to meet the output rate constraints.  The actual meaning of this
+    field is still to be decided, but one can expect that it will be
+    related to the distorsion one would expect if the packet is lost.
+    \item[\ttt Timestamp!] Since there is a one-to-one and onto
+    correspondence between multimedia and network packets, each \ttt
+    network_packet! conceptually ``inherits'' the timestamp of the
+    multimedia packet.  It should be said that, depending on the
+    multimedia format, it is not granted that the multimedia timestamp
+    is represented by a 32-bit unsigned integer (e.g. a video format
+    could have a timestamp expressed in hours, minutes, seconds and
+    frame number).  Nevertheless, it is reasonable to assume that for
+    every multimedia format one can find a function which bijectively
+    maps multimedia timestamps into network timestamps.
+  \item[\ttt Payload!]  This is just the sequence of the reduced
+  components contained in the packet.
+  \end{description}
+  \item[\ttt Network_Crumb!]  This struct represents a \emph{crumb},
+   i.e., a component (analog or binary) reduced and encoded.
+    \begin{description}
+	\item[\ttt Explicit\_RV!] This is a 1-bit flag.  If equal to 0
+	the reduction vector used for this component is the one
+	declared with the \ttt RVIDX! command.  If this field is equal
+	to 1 the reduction vector index is explicitly given in the
+	\ttt RV_Index! field.
+
+        The reason for introducing this field is that although most
+        of the times a node will use the reduction vector declared
+        with the \ttt RVIDX! command, it could happen that sometimes
+        it is necessary to use a different reduction vector just
+        once.  For example, if the node is not able to reconstruct the
+        component since it did not receive enough data, it could
+        decide to insert in the \ttt Network_Packet! the reduced
+        components received by another nodes.  In this case the node
+        would set the \ttt Explicit_RV! bit and write the reduction
+        vector index in \ttt RV_Index!.
+      \item[\ttt Payload\_Length!] This is the number of bytes
+      contained in the \ttt payload! field.
+      \item[\ttt RV\_Index!] This field is present only if \ttt
+      Explicit\_RV! is set and it is the index associated to the
+      reduction vector used to reduce this component.
+      \item[\ttt Payload!] This is just a byte array with the
+      component payload.  The way the payload is interpreted is not
+      described here since it depends on the internal details of the
+      reduction/reconstruction algorithm.  More precisely, the
+      content of  \ttt Payload! will be given as-it-is to a suitable
+      \ttt Decoder! object inside the DSP module (see doc on the DSP
+      module for details).
+    \end{description}
+\end{description}
+
+% \begin{commento}
+% \label{rem:packet-class}
+%   It is worth describing some applicative context where the packet
+%   classification word in \ttt network\_packet.info! can prove useful.
+% 
+%   \begin{itemize}
+%     \item
+%       A multimedia could be made of several independent streams, for
+%       example
+%       \begin{itemize}
+% 	\item
+%           Audio, video and vector graphic in a remote classroom
+%           application 
+%         \item
+%           Base and enhancement layers in a scalable stream
+%         \item
+%           Different descriptions in multiple description context
+%         \item
+%            \ldots and maybe a combination of everything\ldots
+%       \end{itemize}
+%      The packet classification word can be used to differentiate among
+%      the different streams.
+%    \item
+%     Another application of packet classification   is related with congestion control.  If the path toward a peer
+%   is congested, a possible solution could be to lower the
+%   data rate sent over that path.  Data rate reduction could be
+%   achieved, for example, by using a larger reduction factor or,
+%   more simply, by dropping some packets, relying on the fact
+%   that the destination peer would still be able to reconstruct
+%   the original stream by exploiting the redundancy in the
+%   received data.  Note that dropping packets at the source peer
+%   does not necessarily lower the quality of the reconstructed
+%   signal, although it makes the system less robust.
+%   
+%   A possible refinement of the packet dropping solution could be
+%   to store in the packet classification field the ``importance'' of
+%   the packet (e.g., the increase in distorsion that would be
+%   experienced if the packet was dropped) and drop, if necessary, 
+%   the least important packets.
+%   \end{itemize}
+% \end{commento}
+
+\begin{subappendices}
+\section{TCP, UDP, DCCP, \ldots ?}
+\label{sect:1.5;medusa_book}
+
+In the discussion above we did not specify which transport protocol is
+to be used.  Currently we can distinguish three cases
+
+\begin{description}
+  \item[Initial Handshaking] Initiated by the client with the \ttt STRT!
+  command.  Currently is done over UDP (for development reasons that
+  it is not worth explaining), but it will change to TCP in the
+  immediate future.  The Handshaking begins with the \ttt STRT!
+  command and ends with the \ttt ID! sent from the server to the
+  client and it can include the \ttt AUTH! and the corresponding \ttt
+  RPLY!.  The handshaking also includes the \ttt MMEDIA! command.
+  \item[Commands to client] such as \ttt SEND!. Currently transmitted
+  over UDP, but maybe we will switch to TCP, if we can be granted that
+  we can reliably punch TCP holes through NATs.
+  \item[Data transmission from peer to peer] Currently this is done
+  over UDP without any rate control.  Since we are still in an
+  experimental phase, this is not a problem.  In the future some rate
+  control will have to be added.  See Section~\ref{sec:rate-control}
+  for some ideas about it.
+\end{description}
+
+\subsection{Rate control}
+\label{sec:rate-control}
+
+This section is very ``raw'' since it is just a ``collection of
+ideas'' about the introduction of rate control in \medusa-.
+
+Currently we send the reduced packets over ``bare bones UDP'', without
+any rate control.  Since, as said above, we are still in an
+experimental phase, we can accept that.  However, some form of rate
+control will have to be introduced before the first public release of
+\medusa-.
+
+An interesting solution could be the use of the Datagram Congestion
+Control Protocol (DCCP) \cite{rfc4340}. DCCP is a transport protocol
+(therefore, it is at the same level of TCP and UDP) which does rate
+control, but it does not do any retransmission and does not grant for
+packet reception.  The DCCP rate control algorithm is not fixed, but
+it can be changed, depending on the application needs. The algorithm
+to be used is controlled by a parameter called CCID (Congestion
+Control ID).  Currently two control algorithms are defined, a TCP-like
+control algorithm (CCID 2) \cite{rfc4341} and a control algorithm with
+smoother rate variations (CCID 3) \cite{rfc4342} based on TFRC (TCP
+Friendly Rate Control) \cite{rfc3448}.  CCID~3 was designed with
+multimedia applications in mind.
+
+The drawback of using DCCP is that (it seems that) it is not widely
+adopted.  So far, I found only references that there DCCP is included
+in Linux kernel 2.6.x, but it is not clear to me if there is a DCCP
+stack in Windows, Mac OS, whatever\ldots
+
+An alternative approach could be to write a ``TFRC over UDP'' library
+to be used until DCCP gets adopted.  I gave a first look to TFRC
+specifications \cite{rfc3448} and the problem does not look too
+difficult.  The server should encapsulate the UDP data in a larger
+packet with the information required by TRFC, that is,
+\begin{itemize}
+  \item A sequence number 
+  \item A timestamp (in ms)
+  \item The estimate round trip time
+\end{itemize}
+%
+The client should send feedback packets with
+\begin{itemize}
+  \item The timestamp of last packet
+  \item The time elapsed between the processing of last packet and the
+  feedback  transmission
+  \item The rate experienced by the receiver
+  \item An estimate of the packet loss probability
+\end{itemize}
+
+\subsubsection{API draft for TRFC over UDP}
+\label{subsub:sec:rate-control.0;medusa_book}
+
+Actually, it could be a nice idea to write a ``TFRC over UDP'' library
+which is not specifically tailored to \medusa-, but that it could be
+prove useful in other contexts.  This pseudo-transport protocol would
+share the same port space of UDP and maybe will have some handshaking
+for connection creation and shutdown.  It would be an ``asymmetric''
+protocol, with a node acting as ``server'' (sending only data) and
+the other as ``client'' (sending only feedbacks).  A possible API
+for an \ttt Ada! package could be
+
+\begin{verbatim}
+package TFRC_over_UDP is
+   type TFRC_Socket_Type is private;
+
+   type Discarding_Type is new Integer range -1..100;
+   type Deadline_Type   is new Float;
+
+   Non_Discardable : constant Discarding_Type := -1;
+   No_Deadline     : constant Deadline_Type   := -1.0;
+
+
+   procedure Connect_Socket
+     (Socket : TFRC_Socket_Type;
+      Server : in out Sock_Addr_Type);
+
+   procedure Send_Socket
+     (Socket      : TFRC_Socket_Type;
+      Item        : Ada.Streams.Stream_Element_Array;
+      Last        : out Ada.Streams.Stream_Element_Offset;
+      Discardable : Discarding_Type := Non_Discardable;
+      Deadline    : Deadline_Type   := No_Deadline);
+
+   procedure Receive_Socket
+     (Socket : TFRC_Socket_Type;
+      Item   : out Ada.Streams.Stream_Element_Array;
+      Last   : out Ada.Streams.Stream_Element_Offset);
+end TRFC_over_UDP;
+\end{verbatim}
+%
+The interface of the procedures above is the same of the corresponding
+procedures in the \ttt GNAT.Socket! package of GNAT.\footnote{See~\ttt 
+http://www.iuma.ulpgc.es/users/jmiranda/gnat-rts/rts/g-socket\_\_ads.htm!
+(Note: there are \emph{two} underscores before ``\ttt ads!'')}
+The only difference between the two packages is the procedure \ttt
+Send\_Socket! that in the proposed interface has the two optional parameters
+\ttt Discardable! and \ttt Deadline!.
+
+In order to understand the role of the \ttt Discardable! parameter, it is
+worth remembering that TFRC controls the output rate by modifying the
+number of packets transmitted in a unit of time.  By setting \ttt
+Discardable! to a value different from \ttt Non\_Discardable!, we are
+saying to the transport level that the packet can be discarded in case
+of necessity.  Large  values of \ttt Discardable! correspond to large
+probability that the packet is discarded.
+
+\ttt Deadline! is the maximum allowable amount of time (maybe in ms)
+before data is transmitted.
+
+\end{subappendices}
+
+
+\chapter{Internal structure}
+\label{chap:2;medusa_book}
+
+In this chapter we are going to move toward a more ``implementative''
+point of view.  
+
+\section{Peer structure}
+\label{sect:2.1;medusa_book}
+
+\fref{peer-internal} shows the internal structure of a peer.  As it
+can be seen from the figure, the peer is implemented as a collection
+of \emph{modules}.  Each module can be implemented with a stand-alone
+program. Module communication is carried out via local TCP/IP sockets.
+
+\begin{commento}
+The reason for using local TCP/IP sockets for inter-module
+communication is that we consider this type of Inter Process
+Communication (IPC) device to be currently the most portable one.
+\end{commento}
+%
+The modules which compose the peer are
+
+\begin{description}
+  \item[Main] This is the program ``run'' by the user.  Its duty is to
+  start the other modules and interact with the user (usually via a
+  graphical interface)
+  \item[DB] 
+  In the current peer implementation there are few ``variables'' which
+  are ``super-global,'' in the sense that although are written by a
+  single module, they must be readable by all the modules.   
+  
+  \begin{commento}
+      An example of super-global value is the number of the data port
+      used to receive data from other peers.  As it will be seen in
+      the following, that port is opened by the Processing Module, but
+      the port number must be known also to the P2P Module.
+  \end{commento}
+
+  Rather to have every module to inquiry the others to request the
+  value of such super-global variables, we decided to introduce this
+  module which plays the role of a ``shared blackboard.''  Each module
+  write its super-global variables to the DB module where they can be
+  read by the other modules.
+  \item[P2P] This module takes care of the P2P interaction with the
+  server and (eventually, in a future) with the other peers.  Commands
+  such as \ttt STRT!, \ttt AUTH!, \ttt RECV!, 
+  \ldots{} are handled by this module (in some case by forwarding them
+  to other modules)
+  \item[Processing] This is the most complex module.  Its duty is to
+  receive the reduced packets from other peers, carry out the
+  reconstruction, reduce the reconstructed packets and send the new
+  reduced packets to other peers.
+  \item[Player] The duty of this module is to receive the packets
+  reconstructed by the Processing module and ``show'' them to the
+  user.  The role of this module can also be played by a totally
+  independent program (such as \texttt{mplayer} or \texttt{VLC}) as
+  long as it can read data from a TCP/IP socket.
+\end{description}
+
+
+\begin{figure}
+\centerline{\unafigura[0.9\textwidth]{peer-internal}}
+\caption{Internal details of a peer and interaction with the ``outer
+  world.'' 
+\label{fig:peer-internal}}
+\end{figure}
+%
+
+\begin{commento}
+It is worth to describe  the interaction between the peer modules and
+the outer world  shown in \fref{peer-internal}
+\begin{enumerate}
+\item
+After launching the program, the user requires through the User
+Interface (UI) a programme.  As a consequence, the Main module
+forward the user request to the P2P module.
+\item
+The P2P module contacts the root server and send it a \ttt STRT!
+command.  
+\item
+If the root server issues a \ttt AUTH! command, the P2P contacts the
+Main module to ask for the user's credentials.
+\item
+If the user is correctly authenticated the root server begins
+transmitting multimedia data to the node data ports.  The data ports
+are listened by the DSP module which begins the reconstruction of the
+multimedia packets which are in turn sent to the Player.
+\item
+If the root server issues a \ttt SEND! command, the P2P module
+receives it and forwards it to the DSP module.
+\end{enumerate}
+%
+\end{commento}
+
+\subsection{Inter-module protocol}
+\label{sect:2.2;medusa_book}
+
+Each module opens an ``internal'' TCP port for receiving requests from
+the other modules.  The general form of the protocol is as follows
+
+\begin{enumerate}
+\item
+Module $C$ contact module $S$ on its command port, issues a
+request and shutdowns its writing side of the connection.
+\item
+Module $S$ carries out the request, replies to module $C$ and closes
+the connection.
+\end{enumerate}
+%
+A description of the currently implemented inter-module commands
+follows. 
+
+\subsubsection{General commands}
+\label{subsub:2.2.1;medusa_book}
+
+All the modules recognize the following commands
+
+\begin{verbatim}
+  general = quit
+  quit = "QUIT" SP timestamp SP crc32 EOT
+\end{verbatim}
+%
+Upon reception of the \ttt QUIT! command the module will exit.
+
+\subsubsection{P2P and Main}
+\label{subsub:2.2.0;medusa_book}
+
+\begin{verbatim}
+  main-to-p2p = play
+  play = "PLAY" SP timestamp SP URL SP crc32 EOT
+\end{verbatim}
+%
+This command is sent by the Main module to the P2P module to request a
+programme identified by \ttt URL!.
+
+\begin{verbatim}
+  p2p-to-main = p2p-auth
+  p2p-auth    = "AUTH" SP timestamp SP crc32 EOT
+  auth-reply  = "AUTH" SP username SP password EOT
+\end{verbatim}
+%
+The command \ttt p2p-auth! is used by the P2P to ask to the Main
+module for the user's credentials.  The Main module replies with \ttt
+auth-reply!. 
+
+\subsubsection{P2P and DSP}
+\label{subsub:2.2.2;medusa_book}
+
+\paragraph{Syntax}
+\begin{verbatim}
+  p2p-to-dsp  = send / receive / mmedia / open
+
+  ; send      = Same syntax of the server-to-peer SEND command
+  ; receive   = Same syntax of the server-to-peer RECV command
+  ; mmedia    = Same syntax of the server-to-peer MMEDIA command
+
+  open        = "OPEN" SP num-ports SP crc32 EOT
+  num-ports   = integer
+
+  dsp-to-p2p  = ports 
+  ports       = "PORTS" SP port-list SP crc32 EOT
+  port-list   = port-number *("," port-number)
+  port-number = integer
+\end{verbatim}
+
+\paragraph{Semantic}
+\begin{description}
+   \item[\ttt send!] This command has the same syntax and meaning of
+   the corresponding command sent by the server to the peer.  One can
+   think that this command  is forwarded verbatim to the DSP module by
+   the P2P module.
+   \item[\ttt receive!] This command has the same syntax and meaning of
+   the corresponding command sent by the server to the peer.  One can
+   think that this command  is forwarded verbatim to the DSP module by
+   the P2P module.
+   \item[\ttt mmedia!] This command has the same syntax and meaning of
+   the corresponding command sent by the server to the peer.  One can
+   think that this command  is forwarded verbatim to the DSP module by
+   the P2P module.  
+   \item[\ttt open!] With this command the P2P module asks to the DSP
+   module to open \ttt num-ports! ports to be used for receiving data
+   from other peers.  If successfull, the DSP module will reply with 
+   \ttt ports!.
+   \item[\ttt ports!] Used as a reply to the \ttt open! command to
+   communicate to the P2P module the list of the ports the DPS module
+   is listening to.
+\end{description}
+%
+\subsubsection{DB module protocol}
+\label{sub:2.1.0;medusa_book}
+
+\paragraph{Syntax}
+
+
+\begin{verbatim}
+  dot        = %d46 ; "."
+  dash       = %d45 ; "-"
+  underscore = %d95 ; "_"
+
+  varname-char = ALPHA / DIGIT / dot / dash / underscore
+  varname      = ALPHA *varname-char
+
+  length-del-str = length ":" *OCTET
+  length         = integer
+
+  db-command = db-get / db-set
+
+  db-get  = "GET" 1*(SP varname) *(SP timeout) EOT
+  timeout = integer *1(dot integer)
+
+  db-get  = "SET" SP varname SP length-del-str EOT
+
+  db-replies = db-ok / db-malformed / db-unknown
+
+  db-ok        = "000 OK" LF *length-del-str
+  db-malformed = "001 MALFORMED" LF
+  db-unknown   = "001 UNKNOWN" LF
+\end{verbatim}
+
+\paragraph{Semantic}
+
+\begin{description}
+  \item[GET] If all the given \ttt varname! correspond to known
+  variables, the DB module replies with a \ttt db-ok! command, writing
+  each value as a \emph{length delimited string}, that is, by writing
+  the string length (as a number in base 10), followed by a colon
+  ``:'', followed by the bytes which make the string.
+
+  If some variable is not known, the DB module suspends the request
+  until all the variables are known.  If the last parameter is a
+  number, it is interpreted as a timeout value in seconds.  If the
+  timeout expires before all the variable become known, the DB reply
+  with a \ttt db-unknown!
+
+  If the command is malformed, the DB replies \ttt db-malformed!.
+  \item[SET] Assigns to \ttt varname! the value of the second
+  parameter express as a length delimited string.  The reply to this
+  command is always \ttt db-ok!, unless the command is malformed, in
+  which case the DB replies \ttt db-malformed!.
+\end{description}
+
+
+\section{Server structure}
+\label{sect:2.0;medusa_book}
+
+To be written\ldots{} Anyway, the server is quite similar to a peer
+with a larger upload bandwidth.
+
+\appendix
+
+\chapter{Summary of ABNF (RFC 5234)}
+\label{chap:3;medusa_book}
+
+The Augmented Backus-Naur Form (ABNF) described in the RFC
+5234 \cite{rfc5234}\footnote{See \texttt{http://www.ietf.org/rfc/rfc5234.txt}.} is
+used in this document to describe the communication protocols used in
+\medusa-.  Remanding to the original document for a formal description of the
+ABNF, here we report, for the convenience of the reader, the main
+points of the RFC.
+
+\begin{itemize}
+  \item
+    ABNF rules have the form
+    \begin{verbatim}
+      name = elements crlf
+    \end{verbatim}
+where \texttt{name} is the rule name, \texttt{elements} is one or more
+   rule names or terminal specifications (characters or literal
+   strings) and \texttt{crlf} is the ``end-of-line.'' The use of
+   angular brackets \texttt{<$\cdots$>} around rule names is optional.
+\item
+Rule names are case insensitive.  Therefore, \texttt{foo},
+\texttt{FOO} and \texttt{<FoO>}  denote the same rule name.
+\item
+Rules resolve in sequence of characters.  In ABNF a character is just
+an integer value. The format for integers in ABNF is a '\texttt{\%}'
+followed by a base indicator
+
+\begin{center}
+  \begin{tabular}{rcl}
+    \texttt{b} & $\rightarrow$ & binary \\
+    \texttt{d} & $\rightarrow$ & decimal \\
+    \texttt{x} & $\rightarrow$ & hexadecimal 
+  \end{tabular}
+\end{center}
+%
+followed by the value.  For example, both rules
+
+\begin{verbatim}
+  CR = %x0D
+  CR = %d13
+\end{verbatim}
+%
+define \texttt{CR} as the ASCII ``carriage return.''
+\item
+If a rule requires a concatenation of characters, a shortened notation
+where successive values are separated by ``.'' can be used.  For
+example, the following rule
+
+\begin{verbatim}
+  CRLF = %x0D.0A
+\end{verbatim}
+%
+define \texttt{CRLF} as the concatenation of ASCII ``carriage return''
+and ``line feed.''  If convenient,  string literals between double
+quotes \texttt{"$\cdots$"} can be used, for example
+%
+\begin{verbatim}
+  command = "print"
+\end{verbatim}
+%
+A string literal is always to be interpreted according to the US-ASCII
+encoding and it is \emph{case insensitive} (i.e., \texttt{command}
+above will match \texttt{print}, \texttt{PRINT}, \texttt{Print},
+\texttt{PriNT} and others).
+\item
+Alternatives are separated by "\texttt{/}", for example
+\begin{verbatim}
+  DIGIT       =  "0"/"1"/"2"/"3"/"4"/"5"/"6"/"7"/"8"/"9"
+\end{verbatim}
+%
+A ``range notation'' is also possible, for example, the rule above can
+also be written as
+\begin{verbatim}
+  DIGIT       =  %x30-39
+\end{verbatim}
+\item
+Repetition is denoted by means of the "\texttt{*}" prefix.  More
+precisely, 
+\begin{verbatim}
+  <a>*<b>elements
+\end{verbatim}
+%
+indicates at least \texttt{<a>} and at most \texttt{<b>} occurrences
+of \texttt{element}.   Shortened forms are
+\begin{center}
+  \begin{tabular}{rp{0.6\textwidth}}
+    \texttt{<a>*element} & at least \texttt{<a>} occurrences of
+    \texttt{element} \\
+    \texttt{*<b>element} & at most \texttt{<b>} occurrences of
+    \texttt{element} \\
+    \texttt{*element} & any number (even zero) of occurrences of
+    \texttt{element} \\
+    \texttt{<n>element} & exactly \texttt{<n>} occurrences of
+    \texttt{element} (equivalent to \texttt{<n>*<n>element})\\
+  \end{tabular}
+\end{center}
+\end{itemize}
+
+
+\bibliographystyle{alpha}
+\bibliography{medusa_biblio}
+
+\end{document}
+
+% LocalWords:  english Udine unicast IP multicast DSL chunkless ISP UDP Mbit eq
+% LocalWords:  substreams substream Kbit ccc ccccc medusa Wandermonde DCT rete
+% LocalWords:  SBW LBW timestamp pN CRC STRT RPLY Naur ABNF AUTH username encr
+% LocalWords:  RECV ctl XDR struct bitmask idx IPC mplayer VLC UI DSP auth ok
+% LocalWords:  varname crlf FoO rcl PriNT rp biblio DCCP NATs

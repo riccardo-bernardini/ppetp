@@ -1,0 +1,841 @@
+%-*- mode: latex; ispell-local-dictionary: "english" -*-
+\iffalse
+\documentclass{rfc}
+\else
+\documentclass{medusabook}
+\newcommand{\fullname}[1]{#1}
+\newcommand{\organization}[1]{}
+\newcommand{\address}[1]{}
+\fi
+\usepackage{epsf,epsfig}
+\usepackage{amsmath}
+\usepackage{amsbsy}
+\usepackage{amssymb}
+\usepackage{amsthm,amsfonts}
+\usepackage{color}
+\usepackage{srcltx}
+\usepackage{appendix}
+\input{macrodef}
+%
+\title{Peer-to-Peer Epi-Transport Protocol (\ppmtp;)}
+
+\author{
+\fullname{Riccardo Bernardini}
+\organization{University of Udine}
+\address{street=Via delle Scienze, 208;city=Udine;code=33100;
+country=IT}}
+%
+\setcounter{secnumdepth}{3}
+\setcounter{tocdepth}{3}
+\begin{document}
+  \maketitle
+%  \begin{abstract}
+%    This document specifies a distributed transport protocol based on
+%    a peer-to-peer structure.
+%  \end{abstract}
+\tableofcontents
+
+\chapter{Pre-introduzione}
+\label{sect:6;transport_layer}
+
+\section{Il come e il perch\'e di questo documento}
+\label{sub:6.0;transport_layer}
+
+In principio c'era \medusa-, un sistema ``completo'' per la
+trasmissione/ricezione in streaming di video live su reti P2P.  Poi
+scoprii l'RTSP (Real Time Streaming Protocol) e SDP (Session
+Description Protocol) e cominciai una revisione del protocollo
+server/client di \medusa- per avvicinarlo a questi due protocolli
+gi\`a pronti.  Cos\`\i{} facendo mi resi conto che se l'idea di
+\medusa- fosse stata fatta scendere a livello di trasporto, sarebbe
+stato possible integrare facilmente \medusa-  con gli strumenti
+attualmente disponibili, semplicemente aggiungendo al software
+esistente un modulo in grado di interfacciarsi col nuovo protocollo di
+trasporto.  
+
+Un esempio chiarir\`a (spero) l'idea.  Supponiamo di voler ascoltare
+un brano musicale \ttt la-espero.mp3!\footnote{Esiste\ldots \`e l'inno
+esperantista.} presente sul server remoto \ttt
+http://www.example.com!.  La prima cosa che il nostro programma
+\emph{client} fa \`e di interrogare il server remoto chiedendogli
+informazioni sul file MP3.  L'interrogazione avviene tramite il
+comando \ttt DESCRIBE! del protocollo RTSP
+
+\begin{verbatim}
+  DESCRIBE rtsp://www.example.com/la-espero RTSP/1.0
+  CSeq: 1
+\end{verbatim}
+
+Il server risponde con una descrizione delle caratteristiche del brano
+richiesto
+
+\begin{verbatim}
+  RTSP/1.0 200 OK
+  CSeq: 1
+  Content-Type: application/sdp
+  Content-Length: ...
+  
+  v=0
+  o=- 2890844256 2890842807 IN IP4 172.16.2.93
+  s=RTSP Session
+  i=An Example of RTSP Session Usage
+  a=control:rtsp://twister
+  t=0 0
+  m=audio 0 RTP/AVP 0
+  a=control:rtsp://twister/audio
+\end{verbatim}
+%
+La linea pi\`u interessante \`e la penultima (quella che comincia per
+\ttt m=!) che informa il client che il file verr\`a trasmesso usando
+RTP con profilo AVP (Audio Video Profile \cite{rfc3551}) e il
+\emph{payload} ha tipo 0 (1 canale audio a 8~kHz codificato con
+PCMU\footnote{Ossia, 8 bit con scalatura logaritmica, secondo
+  raccomandazione CCITT G.711 \cite{rfc3551}. Un po' 'na schifezza, ma
+insomma\ldots}). 
+
+Il client a questo punto risponde con
+
+\begin{verbatim}
+  SETUP rtsp://www.example.com/twister/la-espero.mp3 RTSP/1.0
+  CSeq: 1
+  Transport: RTP/AVP/UDP;unicast;client_port=3056-3057
+\end{verbatim}
+%
+chiedendo al server di preparsi a trasmettere \ttt la-espero.mp3!
+usando RTP con profilo AVP su UDP, in maniera unicast e usando la
+porta 3056 per i dati e la 3057 per il controllo (RTCP).  Il server
+risponde
+
+\begin{verbatim}
+  RTSP/1.0 200 OK
+  CSeq: 1
+  Session: 12345678
+  Transport: RTP/AVP/UDP;unicast;client_port=3056-3057;
+             server_port=5000-5001
+\end{verbatim}
+%
+Supponiamo ora di avere un protocollo di epi-trasporto \ppmtp; (che
+magari si appoggia su UDP) basato su \medusa-.  In questo caso il
+comando di SETUP potrebbe essere
+
+\begin{verbatim}
+  SETUP rtsp://www.example.com/twister/la-espero.mp3 RTSP/1.0
+  CSeq: 1
+  Transport: RTP/AVP/\ppmtp;/UDP;upload_bandwidth=512;
+             max_channel=1;control=4536
+\end{verbatim}
+%
+Il comando di \ttt SETUP! comunica al server che siamo disposti a
+spendere 512~kbit/s di banda di upload, possiamo aprire al massimo un
+canale (vedremo pi\`u avanti cosa intendiamo per ``canale'') e che
+aspettiamo eventuali comandi di controllo sulla porta 4536.  Il server
+a questo punto potrebbe rispondere con 
+
+\begin{verbatim}
+  RTSP/1.0 200 OK
+  CSeq: 1
+  Session: 12345678
+  Transport: RTP/AVP/\ppmtp;/UDP;n_input=16;n_output=3;reduction=12
+\end{verbatim}
+%
+La risposta del server ci chiede di aprire 16 porte di ingresso (per
+ricevere da 16 peer), 3 porte di uscita e ci comunica che il fattore
+di riduzione che dobbiamo applicare \`e pari a 12.  Il client, usando
+un'opportuna API, configurer\`a il proprio \ttt \ppmtp;! secondo le richieste
+del server e il player invece di eseguire una \ttt recv! su una porta
+UDP eseguir\`a il \ttt recv! sul modulo \ttt \ppmtp;!.
+
+\section{Cosa trovi in questo documento}
+\label{sub:6.1;transport_layer}
+
+L'idea balzana ed abbastanza ambiziosa \`e quella di arrivare a creare
+un RFC per il \ppmtp;.  Il resto di questo documento \`e quindi scritto
+in inglese e in uno stile che si avvicina a quello delle RFC.  La mia
+idea sarebbe di dare le specifiche di \medusa- in quattro documenti
+differenti
+
+\begin{enumerate}
+\item
+Un documento (\S\ref{sect:4;transport_layer}) in cui si descrive il
+formato dei pacchetti scambiati tra i vari peer, ma non il modo di
+eseguire la riduzione e come i ``parametri di riduzione'' (fattore e
+vettore di riduzione) vengano comunicati al nodo.  Con un approccio
+simile a quanto fatto per l'RTP, si delega la descrizione dei dettagli
+di riduzione ad un altro documento.
+\item
+Un documento (\S\ref{sect:5;transport_layer}) in cui si danno i vari
+dettagli sul processo di riduzione.
+\item
+I primi due documenti descrivono in maniera completa i dettagli di
+``basso livello'' del protocollo di trasporto, ma non come i vari peer
+entrino in contatto tra loro.  Nonostante tali dettagli non facciano
+parte, ovviamente, del protocollo di trasporto, penso sia comunque
+utile prevedere un protocollo di controllo della connessione posto ad
+un livello pi\`u alto.  Tale protocollo \`e descritto in
+\S\ref{sect:7;transport_layer}.
+\item
+L'ultimo documento (\S\ref{sect:8;transport_layer}) descriver\`a gli
+adattamenti da fare a RTSP e SDP per integrarli col nuovo livello di
+epi-trasporto.
+\end{enumerate}
+%
+Uno schema di massima di un'applicazione basata su \ppmtp; \`e
+visibile in \fref{cpptp}.
+
+\begin{figure}
+\centerline{\unafigura{cpptp}}
+\caption{Schema di un'applicazione che usa il protocollo di
+  epi-trasporto descritto in questo documento.
+\label{fig:cpptp}}
+\end{figure}
+%
+
+\chapter{Introduction}
+\label{sect:3;transport_layer}
+
+\section{Motivation}
+\label{sub:3.0;transport_layer}
+
+This document proposes a techniques for transmission of large amount
+of data (e.g., video streaming) over a network with peer-to-peer (P2P)
+structure.  The reason for using a P2P network for streaming video to
+a large number of users is that with the P2P approach each new user
+acts also a new server, lowering the burden of the video source.
+
+The main drawbacks in using P2P for video streaming to a large number
+of home users derive from the fact that home users differ from true
+servers in several respects
+
+\begin{itemize}
+\item
+Home users typically have enough download bandwidth to receive video,
+but not enough bandwidth to transmit it.  Therefore, a simple
+``mirroring'' of the received data toward other users is not possible.
+\item
+A home user can leave the network without any warning, maybe because
+of a crash.  If countermasures are not taken, this would leave other
+users without data.
+\item
+A home user could act in a malicious way, trying, for example, to
+pollute the P2P network with wrong data.
+\end{itemize}
+%
+In \cite{bernardini08:dcc08} a possible solution to the above problems
+is proposed.  The key result in \cite{bernardini08:dcc08} is a
+technique which allows each node to transmit with a rate which is $R$
+times smaller than the received data rate.  Value $R$ is called in
+\cite{bernardini08:dcc08} ``reduction factor.''  In order to do the
+rate reduction each node interprets each packet as an $R$-rows matrix
+$P$ of elements of Galois field $GF(2^n)$.  Such matrix is left
+multiplied by a row vector
+$$
+r(b) = [1, b, b^2, \ldots, b^{R-1}]
+$$
+%
+(called ``reduction vector'') where $b$ is an element of $GF(2^n)$
+randomly chosen by the node at startup time.  The bit corresponding to
+product $r(b)*P$ are sent to the other peers.  Since the number of
+elements of $r(b)*P$ is $R$ times smaller than the number of elements
+of $P$, the required upload bandwidth is $R$ times smaller.  In
+\cite{bernardini08:dcc08} is shown that if a node can recover the
+original packet as soon as it receives $R$ packets relative to $R$
+different values of $b$.
+
+The goal of this document is to formalize a pseudo-transport protocol
+based on the P2P approach described in \cite{bernardini08:dcc08}.
+Transforming the solution  in \cite{bernardini08:dcc08} in a transport
+protocol would allow easy adaptation of already available streaming
+technologies to the peer-to-peer structure.
+
+\section{\ppmtp; node model}
+\label{sub:3.2;transport_layer}
+
+In \ppmtp; we suppose that each peer acts as follows
+%
+\begin{enumerate}
+  \item
+     It receives several different reduced versions of a packet.  
+  \item
+     As soon as enough reduced versions are received, it reconstructs the
+     packet. 
+  \item
+     The reconstructed packet is reduced by multiplying it by the
+     reduction vector.  The reduced packet is transmitted to the other
+     peers.  
+\end{enumerate}
+%
+Note that a node could have more than one reduction vector.  In such
+case it would repeat the third step above for every reduction
+vector. We expect that nodes with a large upload bandwidth
+(superpeers) will use more than one reduction vector in order to be
+able to send more than one reduced stream to a single node.
+
+\section{Scope}
+\label{sub:3.1;transport_layer}
+
+The goal of this document is to formalize a pseudo-transport protocol
+based on the P2P approach described in \cite{bernardini08:dcc08}.
+Actually, the specification is conceptually split into three parts
+that will possibly become three different documents
+
+\begin{itemize}
+\item
+A document which specifies how reduced packets are exchanged among the
+peers in the network.  This document leaves unspecified how the
+reduction is carried out and it must be completed by a ``reduction
+profile'' document describing the reduction technique.
+\item
+A basic reduction profile document based on the results in
+\cite{bernardini08:dcc08}.
+\item
+A higher-level protocol used to negoziate the connection between
+different peers.  Note that this protocol is not part of the
+transport protocol, but we feel that the specification would not be
+complete without it.
+\end{itemize}
+%
+
+\chapter{Basic epi-transport specification}
+\label{sect:4;transport_layer}
+
+\section{Transport protocol}
+\label{sub:4.1;transport_layer}
+
+No specific transport protocol is specified.  It is not necessary that
+the transport protocol used by \ppmtp; grants for the delivery of
+every packet nor for the preservation of transmission order.  For
+example, UDP could be used as a transport protocol for \ppmtp;.
+
+\section{Packet format}
+\label{sub:4.0;transport_layer}
+
+The packets exchanged between peers have the following format
+
+\begin{itemize}
+  \item
+    A fixed 32-bit header with the following structure
+
+    \begin{verbatim}
+       -- Structure of a packet exchanged between peers
+       for Header'Bit_Order use High_Order_First;
+       for Header use
+         record
+           Version   at 0 range 0..1; -- Field V = 0
+           Inline    at 0 range 2..2; -- Field I
+           Change    at 0 range 3..3; -- Field C
+           Padding   at 0 range 4..4; -- Field P
+           Marker    at 0 range 5..7; -- Field M, profile specific
+
+           Profile   at 1 range 0..3;
+           Timestamp at 1 range 4..23;
+         end record;
+    \end{verbatim}
+  \item
+    An optional header which depends on the chosen profile. This part
+    is present only if the \ttt Inline! bit is set.
+  \item
+    The data payload, possibly padded (if the \ttt Padding! bit is set)
+\end{itemize}
+
+In picture form
+
+\vbox{
+\begin{verbatim}
+ 0                   1                   2                   3
+ 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2
++-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+|V=0|I|C|P|  M  |Profile|               Timestamp                 |
++=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
+:               Optional Profile-specific data ...                :
++-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+:                           Payload                               :
++-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+\end{verbatim}
+}
+
+The header fields have the following meaning
+
+\begin{description}
+\label{description:4.0.0;transport_layer}
+\item[Version (V): 2 bit]
+This field identify the protocol version.  This document
+corresponds to \ttt V=0!.
+\item[Inline  (I): 1 bit]
+If this bit is 1, details about the reduction process are specified in
+the profile-specific header which follows the first 32-bit word.  If
+this bit is 0, the details to be used are the ones fixed by the last
+packet with the \ttt Change! bit set.
+\item[Change  (C): 1 bit]
+If this bit is 1, bit \ttt Inline! must be 1 too and the details given
+in the optional part become the default details to be used in the
+following.  A packet with bit \ttt Change! implicitly requires that an
+ACK be sent back to the packet source.  As long as the source does not
+receive the ACK, it cannot assume that the default setting have been
+estabilished.   The Acknowledge packet is a 24-bit packet with the
+following format
+
+\begin{verbatim}
+  for ACK_Packet'Bit_Order use High_Order_First;
+  for ACK_Packet use
+    record
+      Reserved  : at 0 range 0..3 := 1; 
+      Timestamp : at 0 range 4..23;
+    end record; 
+\end{verbatim}
+
+\item[Padding (P): 1 bit] Similarly to the RTP specification
+\cite{rfc3550}, if this bit is set, the packet contains one or more
+additional padding octets at the end which are not part of the
+payload.  The last octet of the padding contains a count of how many
+padding octets should be ignored, including itself.
+\item[Marker (M): 3 bit] Similarly to the RTP
+specification \cite{rfc3550}, the interpretation of this field is defined by a
+profile.
+\item[Profile    : 4 bit] The profile number.  Currently only profile
+  0 (described in the following) is defined.
+\item[Timestamp : 20 bit] A sequence number which increments for every
+  packet sent by the root source. Packets with the same timestamp
+  field MUST derive from the same root packet.\\
+  Similarly to the requirements in the RTP specification \cite{rfc3550}, the
+  initial value of this field SHOULD be random (unpredictable) to make
+  known-plaintext attacks on encryption more difficult
+\end{description}
+%
+Note that the payload section can be empty.  An empty payload can be
+useful to set the default reduction parameters without sending any
+data (for example, when the source peer makes first contact with the
+destination peer).
+
+\section{What a profile must specify}
+\label{sect:4.0;transport_layer}
+
+A profile description, in order to be complete, must at least specify
+
+\begin{itemize}
+\item
+The profile number (field \ttt Profile! in the header)
+\end{itemize}
+%
+
+\chapter{Basic profile}
+\label{chap:0;transport_layer}
+
+
+\chapter{Vandermonde profile}
+\label{sect:5;transport_layer}
+
+The basic reduction profile (corresponding to \ttt Profile! field
+equal to 0) is derived from the proposal in \cite{bernardini08:dcc08}.
+
+\section{Reduction details}
+\label{sub:5.0;transport_layer}
+
+The reduction operated by a peer is uniquely determined when the
+following parameters are specified: the Galois field size, the
+reduction factor and the value $b$ used to construct the reduction
+vector.  Tyipically the first two parameters remain constant during a
+session, while the third one can occasionally change.
+
+\begin{example}
+A typical case which require the change of $b$ is when a node is not
+able to recover a complete packet, but it wants nevertheless to
+propagate the information.  In such a case it can transmit one of the
+received packets which cannot be expected to have a reduction vector
+equal to the one choose by the node.  In that case the peer needs to
+change temporally the reduction vector.
+\end{example}
+%
+The reduction details can be transmitted in two formats: a full format
+(64 bit) and a compact one (32 bit).  The definition of the two 
+formats are
+
+\begin{verbatim}
+  for Full_Format use
+    record
+      Reply_Port       : at 0 range 0..15;
+      GF_Size          : at 2 range 0..1;
+      Port_Included    : at 2 range 2..2;
+      Reserved         : at 2 range 3..7;
+      Reduction_Factor : at 3 range 0..7;
+
+      Reduction_Vector : at 4 range 0..31;
+    end record;
+
+  for Compact_Format use
+    record
+      Reduction_Vector : at 0 range 0..31;
+    end record;
+\end{verbatim}
+
+In other words, the full format is simply the compact format with a
+32-bit word which specifies the field size and the reduction factor.
+It is expected that the compact format will be used to change
+temporally the reduction vector (i.e., with the \ttt Change! bit equal
+to zero), while the full format will be used during the initialization
+phase. 
+
+Field \ttt GF_Size! is to be interpreted as follows: the size of the
+Galois field used in the reduction algorithm is $2^{8(\text{\ttt
+    GF\_Size!}+1)}$, that is, we have the following correspondence
+
+\begin{center}
+\begin{tabular}{ccl}
+  \ttt GF_Size! & Field size & 
+\multicolumn{1}{c}{Polynomial} \\
+  0  & $2^8$    & $x^8 + x^4 + x^3 + x^2 + 1$\\
+  1  & $2^{16}$ & $x^{16} + x^5 + x^3 + x^2 + 1$\\
+  2  & $2^{24}$ & $x^{24} + x^{16} + x^{15} +x^{14} +x^{13}+x^{10}+x^9
+  x^7 + x^5 + x^3 + 1$\\
+  3  & $2^{32}$ &
+$x^{32} + x^{15} + x^{9} + x^7 + x^4 + x^3 + 1$
+\end{tabular}
+\end{center}
+%
+The Galois field is implemented as the field of polynomial with binary
+coefficients modulo the polynomial given in the table.
+
+The field \ttt Reduction_Vector! specifies the value of $b$ used to
+construct the reduction vector.  Only the \ttt GF_Size!+1 less
+significative bytes of \ttt Reduction_Vector! are used, the other
+SHOULD be set to zero.  The $k$-th less significative bit of \ttt
+Reduction_Vector! MUST be interpreted as the coefficient of $x^k$.
+
+\section{Security consideration}
+\label{MD5-signing}
+
+A possible threat in a P2P transport solution is that some malicious
+node could inject into the network packets with random data, polluting
+the transmitted stream. Because of this, we introduce a procedure
+which allows the root server to add to the transmitted packets an MD5
+hash of the packet.  The use of the hash is optional and it is decided
+at the beginning of the session by means external to the protocol
+(see, for example, the extension to the RTSP \ttt Transport! header
+described in Section~\ref{subsub:0;transport_layer}).
+
+
+\subsection{MD5 signing}
+\label{subsub:5.1.0;transport_layer}
+
+The root packet, before undergoing the first reduction, MUST be
+preprocessed as follows
+
+\begin{enumerate}
+\item
+Root packet P is padded, if necessary, with zeros to make its length a
+multiple of 512 bits and the result is processed with the MD5 digest
+algorithm.  Let H be the digest value.
+\item
+Concatenate H with P.  Let Q be the resulting packet.
+\item
+Packet Q is padded, if necessary, to make its length a multiple of
+R*(\ttt GF_Size!+1).  Let N be the number of padding bytes.  (Note
+that the maximum number of padding bytes is 1024*4-1 = 4095)
+\begin{enumerate}
+  \item 
+    If N=0, set the most significative bit of Q to 0.
+  \item 
+    If $128 > N > 0$, set the most significative bit of Q to 1 and set the
+    $N$-th padding byte to $N$.
+  \item
+    If $N \geq 128$,  set the most significative bit of Q to 1, set the
+    $N$-th padding byte to $128 + (N \bmod 128)$ and the $N-1$-th
+    padding byte to $\floor{N / 128}$.
+\end{enumerate}
+In other words, the most significative bit of Q play a role similar to
+one played by the \ttt Padding! bit.  Packet Q with the changes above
+is the result of the preprocessing step.
+\end{enumerate}
+%
+Packet Q produced by the preprocessing step is reduced by interpreting
+its byte sequence as a matrix of elements in GF(2**\ttt GF_Size!+1)
+stored columnwise and left-multiplying such matrix with the reduction
+vector.  The reduction vector is a row vector r with R components. The
+k-th component of r is equal to \ttt Reduction_Vector!**(k-1).  In
+other words, if L=R*K is the number of \ttt GF_Size!+1-byte words
+contained in Q, and $Q_n$, $n=0, \ldots, L-1$ denotes the $n$-th word
+of Q, the reduced version of Q is the sequence of values
+$$
+u_k = Q_{Rk} + b Q_{Rk+1} +  \cdots
++ b^{R-1} Q_{R(k+1)-1},
+\qquad k=0, \ldots, K-1
+$$ 
+%
+where the operation are, of course, in GF(2**\ttt GF_Size!+1).  The
+reduced version of Q is preceded by the header (the 32-bit fixed part,
+plus the optional reduction details if necessary) and transmitted.
+
+Each intermediate node SHOULD verify the correctness of the
+reconstructed packet. A possible algorithm for checking the
+correctness of the reconstructed packet is the following
+%
+\begin{enumerate}
+  \item
+    Remove any padding was added to packet Q
+  \item
+    Remove from Q the field H, that is,  the 128 most significative
+    bits of Q  (which correspond to the digest of P)
+  \item
+    Pad P as described above and compute its MD5 digest and verify
+    that it matchs H (taking in mind that the most significative bit
+    of H was changed).
+\end{enumerate}
+%
+If the node finds a mismatch, it MUST NOT reduce and retransmit the
+packet.  If more than the strictly necessary packet have been
+received, the node may try to use other packet combinations in order
+to find a match.
+
+\subsection{Basic check}
+\label{subsub:5.1.1;transport_layer}
+
+\notainterna{Solito trucco: prima ricostruisco e poi controllo la riduzione.}
+
+
+\chapter{Control protocol}
+\label{sect:7;transport_layer}
+
+Section~\ref{sect:5;transport_layer} with profile specification in
+Section~\ref{sect:6;transport_layer} completely specify the
+epi-transport protocol.  However, this epi-transport protocol is
+more complex than other transport protocols since it requires the
+formation of a network of peers with, possibly, problems such peers
+authentication.  Because of this, we propose a higher-level protocol
+to control the connections between peers.
+
+The proposed protocol is similar to RTSP \cite{rfc2326}.  The protocol
+described here is just a draft to be refined.  The format of requests
+and responses are identical to the ones of RTSP, with the only
+difference for the the \ttt RTSP-Version! field replaced by
+%
+\begin{verbatim}
+  PPMTCP-Version = "PPMTCP/1.0"
+\end{verbatim}
+
+\section{Method definition}
+\label{sub:7.0;transport_layer}
+
+This section collects the methods recognized by the control protocol.
+If required, each command can include in the header section the \ttt
+Authentication! header with the necessary credentials to grant that
+the request is legitimate.
+
+Similarly to RTSP, every command MUST carry the \ttt CSeq! header.
+Moreover, if authentication is used, the command MUST carry the \ttt
+ASeq! field. 
+
+\subsection{CLOSE}
+\label{subsub:7.0.2;transport_layer}
+
+This command asks to the node to close an input port.  This command
+could be necessary to ask the node to stop receiving data from a node
+that was discovered to send bad packets.  With this command the node
+avoids wasting resources on a useless input stream.  This method can
+include the header \ttt Reopen! in order to make the node open a new
+port after closing the old one, without the need of an explicity \ttt
+OPEN! request.
+
+\subsection{OPEN}
+\label{subsub:7.0.3;transport_layer}
+
+This command asks to the node to open a new input port.  In the reply
+message the node must specify with the \ttt Port! header the number of
+the opened port.  The URI field in the request line is ignored.
+
+\subsection{SEND}
+\label{subsub:7.0.0;transport_layer}
+
+This command requires to the node to transmit a data stream to the
+remote node specified in the URI field.  The URI field MUST specify a
+port, since no default port can exist in this case.
+
+If a specific data stream is required (maybe because the node has more
+than one reduction vector), the stream number is specified with the
+\ttt Stream! header.  If no \ttt Stream! header is present, the node
+MUST use the first unused stream.
+
+\subsection{STOP}
+\label{subsub:7.0.1;transport_layer}
+
+This command requires to the node to stop the transmission to the
+remote node specified in the URI field.  The URI field MUST specify a
+port, since no default port can exist in this case.
+
+
+\section{Header field definitions}
+\label{sub:7.1;transport_layer}
+
+\subsection{Aseq}
+\label{subsub:7.1.3;transport_layer}
+
+The value of this field is an increasing number used for
+authentication purposes, in order to avoid unauthorized replies of
+already issued commands.  If authentication is used, field \ttt Aseq!
+MUST be present and the node MUST ignore any command having an already
+process \ttt Aseq! value.
+
+\subsection{Authorization}
+\label{subsub:7.1.0;transport_layer}
+
+This header has the same format of the Authorization field in HTTP
+\cite[Section~14.8]{rfc2616}.  The syntax of this header is
+
+\begin{verbatim}
+  Authorization = "Authorization" ":" credentials
+  credentials   = auth-method 
+                   ";" aseq-value 
+                   ";" method 
+                   ";" digest-value
+
+  auth-method  = "Basic-Digest" | token
+
+  method       = send-method |
+                 stop-method |
+                 open-method |
+                 close-method
+
+  send-method  = "SEND" "," ip-dest "," port ("," stream)?
+  stop-method  = "STOP" "," ip-dest "," port ("," stream)?
+  open-method  = "OPEN"
+  close-method = "CLOSE" "," port
+\end{verbatim}
+
+Some remarks are in order
+
+\begin{itemize}
+  \item
+    The values contained in the authorization header uniquely identify
+    the required command.  The presence of \ttt Aseq! field grants
+    that no two different legitimate commands will have the same \ttt
+    Authorization! header.
+  \item
+    The \ttt stream! field in \ttt send-method! and  \ttt stop-method!
+    MUST be present if and only if the \ttt Stream! header is present.
+  \item
+    The algorithm used to compute \ttt digest-value! is uniquely
+    determined by the \ttt auth-method! field.  A basic authentication
+    scheme, corresponding to the value \ttt Basic-Digest! for \ttt
+    auth-method! is described in Section~\ref{sub:7.3;transport_layer}.
+\end{itemize}
+
+\subsection{Cseq}
+\label{subsub:7.1.2;transport_layer}
+
+See \cite[Section~12.17]{rfc2326}.
+
+\subsection{Port}
+\label{sub:7.2;transport_layer}
+
+This header has syntax
+%
+\begin{verbatim}
+  Port = "Port" ":" port-number 
+\end{verbatim}
+%
+it is used in the reply to the \ttt OPEN! command or \ttt CLOSE!
+command with the \ttt Reopen! field equal to 1.  The value \ttt
+port-number! is the number of the port opened by the node.
+
+\subsection{Reopen}
+\label{subsub:7.1.4;transport_layer}
+
+\begin{verbatim}
+  reopen = "Reopen" ":" ("0" | "1")
+\end{verbatim}
+%
+This header can be present only in a \ttt CLOSE! request.  If the
+value is \ttt 1!, the node will re-open a new port after closing the
+port specified in the \ttt CLOSE! command.  If this header is missing
+or the value is \ttt 0!, no new port is open.
+
+\subsection{Stream}
+\label{subsub:7.1.1;transport_layer}
+
+\begin{verbatim}
+  stream = "Stream" ":" integer
+\end{verbatim}
+%
+Optionally used in methods \ttt SEND! and \ttt STOP!  to specify the
+stream number.
+
+\section{Basic authentication protocol}
+\label{sub:7.3;transport_layer}
+
+The \ttt Basic-Digest! authentication method compute the \ttt
+digest-value! field as follows
+
+\begin{enumerate}
+\item
+A random seed is computed as follows
+   \begin{enumerate}
+   \item
+     The node computes the \ttt aseq-value!-th value produced by a
+     Blum-Blum-Shub generator \cite{blum-blum-shub}.  The two module
+     factors and the initial value of the generator are communicated
+     to the node by the server after node authentication (possibly
+     over a secure channel).  The MD5 hash (converted in hexadecimal)
+     of the generated value is the random seed.
+   \end{enumerate}
+\item
+The random seed and the fields \ttt aseq-value! and \ttt method! are
+concatenated, the resulting string is converted to lower case and
+hashed with MD5. 
+\item
+The hash obtained at the previous step is concatenated with the random
+seed and hashed againg with MD5.  
+\item
+The result of the final hash,
+expressed in hexadecimal, is the value of the \ttt digest-value! field.
+\end{enumerate}
+%
+
+
+\chapter{Extensions to RTSP}
+\label{sect:8;transport_layer}
+
+In this section we briefly describe few proposed extensions to RTSP in
+order to adapt it to \ppmtp;
+
+\section{Headers}
+
+\subsection{Transport}
+\label{subsub:0;transport_layer}
+
+\begin{itemize}
+  \item A new lower-transport protocol \ppmtp;-BASIC-UDP is added.
+  \item The protocol \ppmtp;-BASIC-UDP accepts the following parameters
+    \begin{description}
+      \item[\ttt upload\_badwidth=integer!] Sent with the \ttt SETUP!
+      request.  The value of this parameter is the upload bandwidth
+      (in bit/sec) that the node is willing to spend.
+      \item[\ttt md5\_signed=(0|1)!] Sent with the reply to \ttt
+      SETUP!. If this parameters is present and it is \ttt 1!, the
+      packets are signed with the MD5 approach described in
+      Section~\ref{MD5-signing}.  
+      \item[\ttt n\_input=integer!] Sent with the reply to \ttt SETUP!. \ttt
+      n_input! is the number of input ports that the node must open.
+      \item[\ttt n\_channel=integer!] Sent with the reply to \ttt SETUP!. \ttt
+      n_channel! is the number of channels (i.e., of reduction
+      vectors) that the node must prepare.
+      \item[\ttt authentication=(none|token)!] Sent with the reply to \ttt
+      SETUP!. This parameter MUST be present.  Its value identifies the
+      authentication procedure used to create the \ttt Authorization!
+      header.  The special value \ttt none! means that no
+      authentication is used.
+      \item[\ttt authentication-seed=<string without ';'>!]  If \ttt
+      authentication! is not \ttt none! and the chosen authentication
+      method requires a ``seed,'' this parameter MUST be present.  The
+      actual syntax and meaning of the seed is fixed by the the
+      document describing the authentication algorithm, with the
+      constraint that the seed value cannot contain a '\ttt ;!'.
+    \end{description}
+\end{itemize}
+
+\chapter{PPETP API}
+\label{sect:9;transport_layer}
+
+\input{ppetp-api}
+
+\bibliographystyle{abbrv}
+\bibliography{medusa_biblio}
+
+\end{document}

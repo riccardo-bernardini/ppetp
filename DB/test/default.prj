@@ -1,0 +1,5 @@
+project Default is
+  for Object_Dir  use "../obj";
+  for Source_Dirs use (".", "..");
+  for Exec_Dir    use "bin";
+end Default;

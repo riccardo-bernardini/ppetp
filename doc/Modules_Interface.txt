@@ -1,0 +1,68 @@
+		       =======================
+		       == MODULES INTERFACE ==
+		       =======================
+
+== Goal of this document ==
+---------------------------
+
+This document describes the interface a module must satisfy.
+
+== What is a module? ==
+-----------------------
+
+The MEDUSA program is composed of several "modules" which are
+independent executable programs.  The modules communicate via TCP
+ports opened on the local host. The modules are
+
+  1. Main module
+      It is started by the user.  Its duty is to start and coordinate
+      the other modules.
+
+  2. MMedia module
+      Its duty is (1) to recover the original data from the components
+      received from other peers, (2) create the new components and (3)
+      send them to other peers
+
+  3. P2P module
+      Its duty is to find the other peers and manage the contacts with
+      them. 
+
+  4. Player module
+      It plays the data reconstructed by the MMedia module
+
+  5. DB module
+      It stores the "enviroment variables" of MEDUSA.  For example, 
+      the numbers of the ports used by the modules are stored in the
+      DB module.  
+
+== Module behavior ==
+---------------------
+
+Each module is started as a separate sub-process by the Main module
+(the Main module is an exception to this rule, of course).  The first
+module started is the DB module, succesively Main starts all the other
+modules.  
+
+  * When Main starts a module, it puts on the command line the
+    option "-S" followed by the port number of the DB module
+
+  * The new module parses the command line and extract the port number.
+
+  * The new module opens the TCP port used to receive commands
+
+  * After carrying out any necesseary initialization, the module
+    contact the DB and write any information about the module (e.g.,
+    the port number)
+
+  * *AFTER* writing to the DB, the module reads (if needed) the DB 
+
+Note that it is important to do the initialization steps with the
+following sequence
+
+  a. Open TCP port
+  b. Write to DB
+  c. Read  from DB
+
+If b) was carried out before a) it could happen that some modules could
+try to contact a still closed port.  If c) was carried out before b)
+deadlocks could happen.

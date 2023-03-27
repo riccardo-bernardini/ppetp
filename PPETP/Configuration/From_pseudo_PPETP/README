@@ -1,0 +1,6 @@
+This directory holds a package with few configuration procedure
+initially wrote for pseuod_PPETP (an almost dummy library PPETP-like
+designed for testing purposes).  Since most of the code in the package
+is PPETP-independent, it makes sense to recycle it in PPETP, but since
+it will nevertheless require few changes, we put it here, out of the
+way. 

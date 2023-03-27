@@ -1,0 +1,47 @@
+\documentclass{article}
+\begin{document}
+\begin{itemize}
+\item
+Il SW \`e diviso in vari task
+\begin{enumerate}
+\item Un task ``principale'' che legge i comandi da una coda condivisa
+  di ``pacchetti interni'' nella coda scrivono i task che leggono da
+  rete e quello che gestisce i pacchetti di controllo 
+\item Una coppia di task per ogni ingresso
+\begin{enumerate}
+\item Un task ``stretto'' che legge i pacchetti che arrivano da rete e
+  li scrive in un buffer condiviso ``primitivo''.  Questo task deve
+  essere molto veloce per non perdere pacchetti.  Questo task pu\`o
+  generare pacchetti di timeout (sempre inseriti nel buffer condiviso) 
+\item Un task ``travasatore'' che prende i pacchetti dal buffer
+  primitivo e li copia nella coda di ingresso del task
+  principale. Questo task preleverebbe i pacchetti in gruppi dal
+  buffer interno, in modo da svuotare la coda. 
+\end{enumerate}
+
+La struttura a due task sopra delineata \`e necessaria per evitare che
+il processo ``stretto'' aspetti troppo nel tentativo di accedere alla
+coda di ingresso (su cui scrivono tutti) 
+
+\item Un task per la gestione dei pacchetti di controllo.  Questo task
+  riceve richieste di spedire pacchetti di controllo e riceve
+  segnalazioni di ACK.  Gestisce la ritrasmissione dei pacchetti di
+  controllo.  In risposta ad un ACK produce un pacchetto che inserisce
+  nella coda di ingresso.  Il task principale interpreter\`a  tale
+  pacchetto, aggiustando lo stato interno.  La soluzione del pacchetto
+  nella coda di ingresso permette una gestione veloce dell'ACK (appena
+  ricevuto il task principale si risveglia) e non c'\`e rischio di
+  deadlock. Questo task gestisce anche eventuali timeout fatali (dopo
+  N tentativi ci rinuncia).  In caso di timeout fatale viene inserito
+  nella coda un pacchetto CANCEL. 
+\end{enumerate}
+
+\item Ogni porta di uscita (collegata con un opportuno canale) ha
+diversi stati: scollegata, attesa ACK porta, attesa ACK default,
+pronta.  Gli stati avanzano in risposta agli ACK. 
+\end{itemize}
+
+
+
+
+\end{document}

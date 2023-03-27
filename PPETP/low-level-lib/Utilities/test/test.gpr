@@ -1,0 +1,7 @@
+project test is
+   for Object_Dir use "obj";
+
+   for Source_Dirs use (".",                      -- This dir
+                        "..",                     -- PPETP/Utilities
+                        "../../Test_Lib");
+end test;

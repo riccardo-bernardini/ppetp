@@ -1,0 +1,280 @@
+In this file I collect some old stuff that is maybe obsolete. There is
+no LaTeX header because this file is not to be compiled.
+
+\chapter{Ritagli: Control protocol (maybe obsolete)}
+\label{sect:2;driver}
+
+Chapter~\ref{sect:0;driver} specifies the epi-transport protocol
+\ppetp-.  However, \ppetp- is more complex than other transport
+protocols since it requires the formation of a network of peers with,
+possibly, problems such peers authentication.  Because of this, we
+propose a higher-level protocol to control the connections between
+peers.
+
+The proposed protocol is similar to RTSP \cite{rfc2326}, only with a
+different set of methods and headers.  Here we simply describe the
+differences between RTSP and \ppc- (Epi Transport Control Protocol).
+
+\section{Request and responses}
+\label{sect:2.0;driver}
+
+Like in RTSP, nodes communicate through exchange of \emph{requests}
+and \emph{responses}.  The format of requests and responses are
+identical to the ones of RTSP, with the only difference for the the
+\ttt RTSP-Version! field is replaced by
+%
+\begin{verbatim}
+  PPMTCP-Version = "PPMTCP/1.0"
+\end{verbatim}
+
+\section{Methods}
+\label{sect:2.1;driver}
+
+This section collects the methods recognized by the control protocol.
+If required, each command can include in the header section the \ttt
+Authentication! header with the necessary credentials to grant that
+the request is legitimate.
+
+Similarly to RTSP, every command MUST carry the \ttt CSeq! header.
+Moreover, if authentication is used, the command MUST carry the \ttt
+ASeq! field. 
+
+\subsection{CLOSE}
+\label{subsub:7.0.2;transport_layer}
+
+This command asks to the node to close an input port.  This command
+could be necessary to ask the node to stop receiving data from a node
+that was discovered to send bad packets.  With this command the node
+avoids wasting resources on a useless input stream.  This method can
+include the header \ttt Reopen! in order to make the node open a new
+port after closing the old one, without the need of an explicity \ttt
+OPEN! request.
+
+\subsection{OPEN}
+\label{subsub:7.0.3;transport_layer}
+
+This command asks to the node to open a new input port.  In the reply
+message the node must specify with the \ttt Port! header the number of
+the opened port.  The URI field in the request line is ignored.
+
+\subsection{SEND}
+\label{subsub:7.0.0;transport_layer}
+
+This command requires to the node to transmit a data stream to the
+remote node specified in the URI field.  The URI field MUST specify a
+port, since no default port can exist in this case.
+
+If a specific data stream is required (maybe because the node has more
+than one reduction vector), the stream number is specified with the
+\ttt Stream! header.  If no \ttt Stream! header is present, the node
+MUST use the first unused stream.
+
+\subsection{STOP}
+\label{subsub:7.0.1;transport_layer}
+
+This command requires to the node to stop the transmission to the
+remote node specified in the URI field.  The URI field MUST specify a
+port, since no default port can exist in this case.
+
+This section collects the methods recognized by the control protocol.
+If required, each command can include in the header section the \ttt
+Authentication! header with the necessary credentials to grant that
+the request is legitimate.
+
+Similarly to RTSP, every command MUST carry the \ttt CSeq! header.
+Moreover, if authentication is used, the command MUST carry the \ttt
+ASeq! field. 
+
+\subsection{CLOSE}
+\label{subsub:close;transport_layer}
+
+This command asks to the node to close an input port.  This command
+could be necessary to ask the node to stop receiving data from a node
+that was discovered to send bad packets.  With this command the node
+avoids wasting resources on a useless input stream.  This method can
+include the header \ttt Reopen! in order to make the node open a new
+port after closing the old one, without the need of an explicity \ttt
+OPEN! request.
+
+\subsection{OPEN}
+\label{subsub:open;transport_layer}
+
+This command asks to the node to open a new input port.  In the reply
+message the node must specify with the \ttt Port! header the number of
+the opened port.  The URI field in the request line is ignored.
+
+\subsection{SEND}
+\label{subsub:send;transport_layer}
+
+This command requires to the node to transmit a data stream to the
+remote node specified in the URI field.  The URI field MUST specify a
+port, since no default port can exist in this case.
+
+If a specific data stream is required (maybe because the node has more
+than one reduction vector), the stream number is specified with the
+\ttt Stream! header.  If no \ttt Stream! header is present, the node
+MUST use the first unused stream.
+
+\subsection{STOP}
+\label{subsub:stop;transport_layer}
+
+This command requires to the node to stop the transmission to the
+remote node specified in the URI field.  The URI field MUST specify a
+port, since no default port can exist in this case.
+
+
+\section{Headers}
+\label{sub:7.1;transport_layer}
+
+\subsection{Aseq}
+\label{subsub:7.1.3;transport_layer}
+
+The value of this field is an increasing number used for
+authentication purposes, in order to avoid unauthorized replies of
+already issued commands.  If authentication is used, field \ttt Aseq!
+MUST be present and the node MUST ignore any command having an already
+process \ttt Aseq! value.
+
+\subsection{Authorization}
+\label{subsub:7.1.0;transport_layer}
+
+This header has the same format of the Authorization field in HTTP
+\cite[Section~14.8]{rfc2616}.  The syntax of this header is
+
+\begin{verbatim}
+  Authorization = "Authorization" ":" credentials
+  credentials   = auth-method 
+                   ";" aseq-value 
+                   ";" method 
+                   ";" digest-value
+
+  auth-method  = "Basic-Digest" | token
+
+  method       = send-method |
+                 stop-method |
+                 open-method |
+                 close-method
+
+  send-method  = "SEND" "," ip-dest "," port ("," stream)?
+  stop-method  = "STOP" "," ip-dest "," port ("," stream)?
+  open-method  = "OPEN"
+  close-method = "CLOSE" "," port
+\end{verbatim}
+
+Some remarks are in order
+
+\begin{itemize}
+  \item
+    The values contained in the authorization header uniquely identify
+    the required command.  The presence of \ttt Aseq! field grants
+    that no two different legitimate commands will have the same \ttt
+    Authorization! header.
+  \item
+    The \ttt stream! field in \ttt send-method! and  \ttt stop-method!
+    MUST be present if and only if the \ttt Stream! header is present.
+  \item
+    The algorithm used to compute \ttt digest-value! is uniquely
+    determined by the \ttt auth-method! field.  A basic authentication
+    scheme, corresponding to the value \ttt Basic-Digest! for \ttt
+    auth-method! is described in Section~\ref{sub:7.3;transport_layer}.
+\end{itemize}
+
+\subsection{Cseq}
+\label{subsub:7.1.2;transport_layer}
+
+See \cite[Section~12.17]{rfc2326}.
+
+\subsection{Port}
+\label{sub:7.2;transport_layer}
+
+This header has syntax
+%
+\begin{verbatim}
+  Port = "Port" ":" port-number 
+\end{verbatim}
+%
+it is used in the reply to the \ttt OPEN! command or \ttt CLOSE!
+command with the \ttt Reopen! field equal to 1.  The value \ttt
+port-number! is the number of the port opened by the node.
+
+\subsection{Reopen}
+\label{subsub:7.1.4;transport_layer}
+
+\begin{verbatim}
+  reopen = "Reopen" ":" ("0" | "1")
+\end{verbatim}
+%
+This header can be present only in a \ttt CLOSE! request.  If the
+value is \ttt 1!, the node will re-open a new port after closing the
+port specified in the \ttt CLOSE! command.  If this header is missing
+or the value is \ttt 0!, no new port is open.
+
+\subsection{Stream}
+\label{subsub:7.1.1;transport_layer}
+
+\begin{verbatim}
+  stream = "Stream" ":" integer
+\end{verbatim}
+%
+Optionally used in methods \ttt SEND! and \ttt STOP!  to specify the
+stream number.
+
+\section{Basic authentication protocol}
+\label{sub:7.3;transport_layer}
+
+The \ttt Basic-Digest! authentication method compute the \ttt
+digest-value! field as follows
+
+\begin{enumerate}
+\item
+A random seed is computed as follows
+   \begin{enumerate}
+   \item
+     The node computes the \ttt aseq-value!-th value produced by a
+     Blum-Blum-Shub generator \cite{blum-blum-shub}.  The two module
+     factors and the initial value of the generator are communicated
+     to the node by the server after node authentication (possibly
+     over a secure channel).  The MD5 hash (converted in hexadecimal)
+     of the generated value is the random seed.
+   \end{enumerate}
+\item
+The random seed and the fields \ttt aseq-value! and \ttt method! are
+concatenated, the resulting string is converted to lower case and
+hashed with MD5. 
+\item
+The hash obtained at the previous step is concatenated with the random
+seed and hashed againg with MD5.  
+\item
+The result of the final hash,
+expressed in hexadecimal, is the value of the \ttt digest-value! field.
+\end{enumerate}
+%
+
+\section{Altra roba}
+\label{sect:2.4;transport_layer}
+
+\begin{itemize}
+  \item The protocol \ppmtp;-BASIC-UDP accepts the following parameters
+    \begin{description}
+      \item[\ttt upload\_badwidth=integer!] Sent with the \ttt SETUP!
+      request.  The value of this parameter is the upload bandwidth
+      (in bit/sec) that the node is willing to spend.
+      \item[\ttt n\_input=integer!] Sent with the reply to \ttt SETUP!. \ttt
+      n_input! is the number of input ports that the node must open.
+      \item[\ttt n\_channel=integer!] Sent with the reply to \ttt SETUP!. \ttt
+      n_channel! is the number of channels (i.e., of reduction
+      vectors) that the node must prepare.
+      \item[\ttt authentication=(none|token)!] Sent with the reply to \ttt
+      SETUP!. This parameter MUST be present.  Its value identifies the
+      authentication procedure used to create the \ttt Authorization!
+      header.  The special value \ttt none! means that no
+      authentication is used.
+      \item[\ttt authentication-seed=<string without ';'>!]  If \ttt
+      authentication! is not \ttt none! and the chosen authentication
+      method requires a ``seed,'' this parameter MUST be present.  The
+      actual syntax and meaning of the seed is fixed by the the
+      document describing the authentication algorithm, with the
+      constraint that the seed value cannot contain a '\ttt ;!'.
+    \end{description}
+\end{itemize}
+

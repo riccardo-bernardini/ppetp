@@ -1,0 +1,69 @@
+with "xmlada";
+
+project Test is
+
+   for Object_Dir use "obj";
+   type Xmlada_Kind_Type is
+      ("static", "relocatable");
+   Library_Type : Xmlada_Kind_Type := external ("LIBRARY_TYPE");
+
+   case Library_Type is
+
+      when "relocatable" =>
+         for Source_Dirs use (".", "../", "../../Profiles", "../../Profiles/Basic", "../../Profiles/Vandermonde", "../../Test_Lib", "../../Network", "../../Auth", "../../Auth/Profiles", "../../Utilities");
+         for Main use ("config_parser_test.adb");
+
+      when "static" =>
+
+   end case;
+
+   package Linker is
+
+      case Library_Type is
+
+         when "relocatable" =>
+            for Default_Switches ("ada") use ("-fprofile-generate");
+
+         when "static" =>
+
+      end case;
+   end Linker;
+
+   package Compiler is
+
+      case Library_Type is
+
+         when "relocatable" =>
+            for Default_Switches ("ada") use ("-g", "-gnata", "-gnatE", "-fstack-check", "-gnatwovz", "-gnatVimorst", "-gnat05", "-ftest-coverage", "-fprofile-arcs");
+
+         when "static" =>
+
+      end case;
+   end Compiler;
+
+   package Builder is
+
+      case Library_Type is
+
+         when "relocatable" =>
+            for Default_Switches ("ada") use ("-s", "-g");
+
+         when "static" =>
+
+      end case;
+   end Builder;
+
+   package Binder is
+
+      case Library_Type is
+
+         when "relocatable" =>
+            for Default_Switches ("ada") use ("-E");
+
+         when "static" =>
+
+      end case;
+   end Binder;
+
+end Test;
+

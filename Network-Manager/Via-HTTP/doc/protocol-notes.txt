@@ -1,0 +1,93 @@
+* The network manager should know the {stream, user} bandwidth in
+  "physical" units, say kbit/s.  When streaming root creates a new
+  stream entry in the NM db, it says what is the required BW; when a
+  client connects, it says what is the maximum BW that it is willing
+  to spend.
+
+* NM Syntax
+
+    = Method POST
+
+    = A parameter always given: command
+
+    = Other parameters depend on the value of command
+
+    = Available commands
+
+        - create_stream
+            Create a new entry in the NM stream DB.  It requires
+
+	       server		  server name
+               stream             stream name
+               bandwidth          required BW
+               profile            reduction profile
+	       nonce              used in the signature 
+	       signature          server signature
+         
+            Other parameters depend on the profile.  Every profile
+            parameter has the form param-<profile name>-<param name>
+            (e.g., param-vandermonde-gfsize)
+
+	    The combination (server, stream) must be unique.  
+
+	    Signature creation: see in the following 
+
+       - destroy_stream
+          Remove a stream form the stream DB.  It requires
+
+               stream             stream name
+	       server		  server name
+	       nonce
+	       signature
+
+       - join_user
+          Add a new user to the network associated to a given stream
+          and sends to the user the configuration parameters. (Note:
+          also the streaming root is added with this command since a
+          root is a user that does not require any input stream).  It
+          requires 
+
+          Parametri necessari:
+             stream                  stream name
+             username                
+             upload-bw               Available upload bandwidth
+	     candidate-type          Currently only "ice", case insens.
+             candidate               (one or more) syntax dep. on type
+             n-input                 Number of required input streams
+             nonce                   
+	     server                  server name
+             signature               server signature
+
+	  The reason for using the signature is to be sure that the
+	  request comes from the server.
+
+	  The configuration string is the body of the reply
+
+            * If candidate-type = ice, 'candidate' has the same syntax 
+              of SDP attribute 'candidate' in ICE, that is
+
+        foundation id transport priority address port cand-type 
+          ["raddr" address] ["rport" port] *(token tonken)
+
+       - remove_user
+	   Remove a user from the DB.  Only the server can issue this
+	   request. It requires
+
+           Parametri necessari
+             stream             
+             username           
+             nonce    
+	     server    
+             signature
+
+   = I parametri sono passati come parametri del metodo GET (in realtà
+   dovremmo usare POST...)
+
+   = Forse le firme non servono se usiamo HTTP per auth
+
+* The signature requires a key shared between the server and the NM.
+  It is computed as follows: the parameter string with signature and
+  nonce removed is concatenated with the key and hashed, the result is
+  concatenated with the nonce and the key and hashed again, the result
+  is converted in hexadecimal and used as signature.
+

@@ -1,0 +1,62 @@
+start         = Configuration
+
+Configuration = element configuration { Session+ }
+
+Session       = element session { 
+						attribute streamID {xsd:integer },
+                  Profile,
+                  Server?, Output, Input }
+
+Server        = element server {
+                   attribute address { text },
+                   attribute port    { xsd:unsignedShort },
+                   attribute id      { xsd:hexBinary }
+                }                    
+              
+Output        = element output { Channel+ }
+
+Channel       = element channel { 
+                  attribute id { xsd:integer },
+                  attribute max-target { xsd:integer }?,
+                  Auth-data?, 
+                  Parameter* 
+                }
+
+Profile       = element profile {
+                  attribute name { "basic" | "vandermonde" },
+                  Parameter* 
+                }
+Parameter     = element parameter {
+                   attribute name  { text },
+                   attribute value { text }
+                }
+              
+Input         = element input { Peer* }
+
+Peer          = element peer  { 
+                    attribute id { text },
+                    attribute address-type { "ip" | "ice" },
+                    Address+,
+                    Channel*,
+                    Auth-data?
+                }
+Address       = element address {
+                   attribute address { text },
+                   attribute port    { xsd:unsignedShort },
+                   Parameter*
+                } 
+
+Auth-data     = element auth-data {
+                   Auth-profile,
+                   Auth-token*
+                }
+
+Auth-profile  = element auth-profile {
+                   (attribute name { "void" | "token" | "signed" }
+                  | attribute id { xsd:integer })
+                }
+
+Auth-token    = element auth-token {
+                   attribute command { "stop" | "start" }?,
+                   attribute value { xsd:hexBinary }
+                }

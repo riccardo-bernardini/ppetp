@@ -1,0 +1,5 @@
+project Medusa_Basic is
+   for Object_Dir use "obj";
+
+   for Source_Dirs use ("lib/**", "../../../lib/Ada/**");
+end Medusa_Basic;

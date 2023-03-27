@@ -1,0 +1,6 @@
+project Test is
+  for Source_Dirs use (".", "..");
+  for Object_Dir  use "obj";
+  for exec_dir use ".";
+  for main use ("test_length_delim", "test_url", "test_tcp_server");
+end Test;

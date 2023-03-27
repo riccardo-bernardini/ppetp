@@ -1,0 +1,16 @@
+project Test is
+
+   for Object_Dir use "obj";
+   for Source_Dirs use (".", "../", "../../../low-level-lib/Test_Lib");
+   for Main use ("test_crypt_sha1.adb", "test_hmac_with_sha1.adb", "test.adb");
+
+   package Builder is
+      for Default_Switches ("ada") use ("-s", "-g", "-C");
+   end Builder;
+
+   package Compiler is
+      for Default_Switches ("ada") use ("-gnatVa", "-g", "-fstack-check", "-gnatE", "-gnat05", "-gnata", "-gnato");
+   end Compiler;
+
+end Test;
+

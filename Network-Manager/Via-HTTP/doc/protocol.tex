@@ -1,0 +1,303 @@
+\documentclass[a4paper,10pt]{medusabook}
+\newcommand{\fullname}[1]{#1}
+\newcommand{\ttbf}[1]{\texttt{\bfseries #1}}
+%\documentclass[a4paper,11pt]{article}
+%
+% text width/height/offset
+%
+%\textwidth=16.3cm         %%% valore "vero" = 16cm
+%\textheight=24.6cm      %%% valore "vero" = 24.5
+%\hoffset=-1.64cm
+%\voffset=-1in
+%%\renewcommand{\baselinestretch}{1.62}
+%\renewcommand{\baselinestretch}{1.48} %% Valore ``vero'' per 2interl.= {1.55}
+%
+% Standard packages...
+%
+\def\ttt{\catcode`\_=12 \tttii}
+\def\tttii#1!{{\tt #1}\catcode`\_=8{}}
+
+\usepackage{amsmath}
+\usepackage{amsbsy}
+\usepackage{amsthm,amsfonts}
+\usepackage{epsf,epsfig}
+\usepackage{times}
+\usepackage{srcltx}
+\usepackage[a4paper,margin=1.2in]{geometry}
+\voffset=-0.5in
+%
+%
+%
+%%\newtheoremstyle{corto}{no}{n}{\bfseries}{\bfseries}{.}
+%%   {\itshape}
+%%   {0.25\baselineskip}
+%%   {0.25\baselineskip}
+%%\theoremstyle{corto}
+%% \addtolength{\theorempreskipamount}{-15mm}
+%% \addtolength{\theorempostskipamount}{-15mm}
+%
+%
+%
+%
+% Standard definitions...
+%
+\input{macrodef}
+%\setlength{\nproofskip}{0pt}
+%
+% Local definitions
+%
+%
+% Title informations
+%
+\title{HTTP-controlled PPETP network manager}
+
+\author{
+\fullname{Riccardo Bernardini}
+\organization{DIEGM -- University of Udine}
+\address{street=Via delle Scienze, 208;city=Udine;code=33100;country=IT;email=bernardini@uniud.it}}
+
+%
+% True document
+%
+\begin{document}
+\maketitle
+
+\tableofcontents
+
+\chapter{Introduction}
+\label{sect:intro;driver}
+
+As known, \ppetp- does not mandate a specific overlay network
+structure and the duty of organizing the network is demanded to an
+external actor called the \emph{network manager}.  In our experiments
+we found it convenient to control the network manager via an HTTP
+interface.  This allowed us to write the network manager in script
+languages (more precisely, we used Ruby) called via CGI
+interface. Since the protocol we used is language independent, we
+document it here for future reference.
+
+\chapter{Protocol description}
+\label{chap:0;protocol}
+
+\section{The network model}
+\label{sect:0.0;protocol}
+
+A \emph{network manager} is in charge of several \emph{streams}.  A
+stream is uniquely identified by its \emph{stream-name} and the name of the
+\emph{server} that is producing the stream.  At each time there can be
+only one stream with a given pair (server, stream-name).
+
+Each stream has one or more \emph{users}.  Each user is uniquely
+identified by its \emph{username}.  A \emph{user instance} is the
+triple (username, stream-name, server).  
+
+\subsection{Stream attributes}
+\label{sub:0.0.0;protocol}
+
+A stream is characterized by the following attributes
+
+\begin{description}
+\item[\ttt stream\_name!]  The name of the stream.  The network manager uses
+  this as an \emph{opaque} identifier that, together with the server
+  name, uniquely identifies a stream.
+\item[\ttt server!] The server name.  This too is treated as an opaque ID.
+\item[\ttt bandwidth!] The  bandwidth required by the stream in bit/second.  
+\item[\ttt profile\_name!] The name of the \ppetp- profile used for
+  streaming.  Currently defined names are \ttt basic! and \ttt
+  vandermonde! 
+\item[\ttt profile\_data!] A profile-dependent set of session-level
+  profile parameters.   For the two currently defined profiles the set
+  is
+  \begin{description}
+    \item[basic profile] No session-level profile parameter defined
+    \item[vandermonde profile] This profile has two session level
+    parameters
+    \begin{description}
+      \item[\ttt gf\_size!] The basis 2 logarithm of the size of the
+      Galois field used (e.g., if $\gf{256}$ is used, then \ttt
+      gf\_size!=8). Currently ammisible values are $4$ (?), $8$, $16$
+      and $32$.
+      \item[\ttt red\_fac!] The reduction factor used.
+    \end{description}
+  \end{description}
+\end{description}
+
+\subsection{User attributes}
+\label{sub:0.0.1;protocol}
+
+A user session is characterized by the following attributes
+
+\begin{description}
+\item[\ttt username!] The name of the user.  The network manager
+  uses this as an \emph{opaque} identifier that, together with the
+  stream name and the server name, uniquely identifies a user session.
+\item[\ttt stream\_name!]  The name of the stream seen by the user. 
+This too is treated as an opaque ID.
+\item[\ttt server!] The server name.  This too is treated as an opaque
+  ID.
+\item[\ttt upload\_bw!] The maximum user's upload bandwidth (in bit/s).
+\item[\ttt n\_inputs!] The number of input streams required by the
+  user. 
+\item[\ttt n\_channels!] The number of \ppetp- channels available at
+  the user
+\item[\ttt peer\_id!] The ID that identifies the user in the \ppetp-
+  session.  It is an opaque 32-bit integer.
+\item[\ttt address\_type!] The type of user's address description.
+  The user address can be described in several ways.  For example, if
+  the user has a public IP address, it sufficies to specify an IP
+  address and an UDP port; if the user is behind a NAT a more complex
+  description (e.g., a ICE-based one) can be necessary.  The value of
+  this attribute specifies which description is used.  Currently only
+  two description formats are defined: \ttt ip! and \ttt ice!
+\item[\ttt address!] The peer address.  The actual content of this
+  attribute depends on the value of \ttt address\_type!.  More
+  precisely,
+  \begin{description}
+    \item[case \ttt address\_type!=\ttt ip!]  In this case the \ttt
+    address! attribute has the form 
+
+\centerline{\ttt ip\_address! \ttt SP! \ttt port!}
+
+where \ttt ip\_address! is the address of the node (in numeric form or
+not, IPv4 or IPv6), \ttt SP! is a whitespace and \ttt port! is a
+decimal integer.
+    \item[case \ttt address\_type!=\ttt ice!] In this case the \ttt
+    address! attribute is a \emph{list} of ICE candidates in the same
+    format used for SDP description of ICE candidates \cite{ice-draft-19}.
+  \end{description}
+\end{description}
+
+\section{Command format}
+\label{sect:0.1;protocol}
+
+The network manager accepts command via HTTP.  Both GET and POST
+method can be used, although POST is suggested since the NM commands
+have side effects.  The commands are transmitted in the usual
+``\&''-string used in HTTP request.  From an abstract point of view, a
+command is just a collection of parameters.  The actual command is
+given in the parameter \ttt command!, other parameters depend on \ttt
+command! value.
+
+The currently defined commands (i.e., possible values for \ttt
+command!) are
+
+\begin{description}
+\item[\ttt create\_stream!]  Add a new stream to the NM DB.  
+  \begin{description}
+\item[Parameters]
+Required
+  parameters are
+  \begin{description}
+    \item[\ttt stream!] The stream name
+    \item[\ttt server!] The name of the server
+    \item[\ttt bandwidth!]  See Section~\ref{sub:0.0.0;protocol}
+    \item[\ttt profile\_name!] See Section~\ref{sub:0.0.0;protocol}
+    \item[\ttt profile\_data!] See Section~\ref{sub:0.0.0;protocol}
+  \end{description}
+\item[Reply]
+The reply to this request will have an empty body.
+  \end{description}
+
+\item[\ttt destroy\_stream!]
+Remove a stream from the NM DB.  This removes also any user connected
+to the stream.  Note that this \textbf{does not stop} the streaming,
+but simply remove the stream reference from the DB.  
+\begin{description}
+\item[Parameters]
+Required parameters are
+  \begin{description}
+    \item[\ttt stream!] The stream name
+    \item[\ttt server!] The name of the server
+  \end{description}
+\item[Reply]
+The reply to this request will have an empty body.
+\end{description}
+
+\item[\ttt join\_user!]
+Add a new user to a streaming session.  
+\begin{description}
+\item[Parameters]
+Required parameters are
+  \begin{description}
+    \item[\ttt stream!] The stream name
+    \item[\ttt server!] The name of the server
+    \item[\ttt username!]  See Section~\ref{sub:0.0.1;protocol}
+    \item[\ttt upload\_bw!] See Section~\ref{sub:0.0.1;protocol}
+    \item[\ttt address\_type!] See Section~\ref{sub:0.0.1;protocol}
+    \item[\ttt n\_inputs!] See Section~\ref{sub:0.0.1;protocol}
+    \item[\ttt n\_channels!] See Section~\ref{sub:0.0.1;protocol}
+  \end{description}
+\item[Reply]
+The body of the reply to this request will contain informations that
+allow the node to contact other peers.  The description  of the body
+format is outside the scope of this document.
+\end{description}
+
+\item[\ttt remove\_user!]  
+Remove a user from a streaming session.
+Note that this does not stop the data stream toward the user, but
+simply removes the user from the database. 
+\begin{description}
+\item[Parameters]
+Required parameters are
+  \begin{description}
+    \item[\ttt stream!] 
+    \item[\ttt server!] 
+    \item[\ttt username!]  
+    \item[\ttt repair!]  This parameter can be 0 or 1. If it is equal
+    to 1, reallocate peers to the lower peers of the removed user.
+  \end{description}
+\item[Reply]
+The reply to this request will have an empty body if \ttt repair!=0,
+it will have reparation instructions if \ttt repair!=1.
+\end{description}
+\end{description}
+%
+\subsection{Authentication}
+\label{sub:0.1.0;protocol}
+
+The protocol supports optional authentication based on a secret key
+shared between a ``command issuer'' and the NM.  In order to
+authenticate a request parameter \ttt auth! must be added to the
+request.  The value of \ttt auth! matchs the following regular
+expression
+
+\begin{center}
+\tt
+([-a-zA-Z0-9]+):([-a-zA-Z0-9]+):([0-9]+):([a-fA-F0-9]+)
+\end{center}
+
+where
+\begin{itemize}
+\item
+The first field is the name of the command issuer
+\item
+The second field is a ``nonce''
+\item
+The third field is a ``timestamp.''  More precisely, it is a decimal
+number representing the time the command was issued expressed as the
+number of seconds since 1/1/2010 (it is equal to NTP value minus
+3\_409\_784\_048).  NM should refuse too old commands or commands with a
+timestamp too far into the future.
+\item
+The fourth field is an hexadecimal representation of the HMAC-SHA256
+obtained by hashing with the shared key the message obtained by
+removing from the query the fourth field of the value of \ttt auth!.
+For example, if the query was
+
+\begin{center}
+\small
+command=destroy\_stream\&stream=s1\&auth=root:x256rtU:12345:123456\ldots123\&server=example.com
+\end{center}
+
+the message to be hashed would be
+\begin{center}
+\small
+command=destroy\_stream\&stream=s1\&auth=root:x256rtU:12345:\&server=example.com
+\end{center}
+\end{itemize}
+
+\bibliographystyle{i3e}
+\bibliography{biblio,di-jelena,miei,rfc}
+
+\end{document}

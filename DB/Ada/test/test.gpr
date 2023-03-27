@@ -1,0 +1,6 @@
+project test is
+  for Object_Dir use "obj";
+  for exec_dir use ".";
+  for main use ("mini_db_client");
+  for source_dirs use (".", "..", "../../../lib/Ada");
+end test;

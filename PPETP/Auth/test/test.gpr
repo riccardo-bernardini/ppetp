@@ -1,0 +1,5 @@
+project test is
+   for Object_Dir use "obj";
+
+   for Source_Dirs use ("../**", ".", "../../Test_Lib");
+end test;

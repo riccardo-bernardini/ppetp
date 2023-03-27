@@ -1,0 +1,581 @@
+\documentclass[a4paper]{medusabook}
+\usepackage{amsmath}
+\usepackage{amsbsy}
+\usepackage{amssymb}
+\usepackage{amsthm,amsfonts}
+\usepackage{color}
+\usepackage{srcltx}
+\usepackage{appendix}
+\input{macrodef}
+%
+%\titleimage{chestCN9697}% clarita1000@gmail.com
+\title{\ppmtp; internals}
+\author{R. Bernardini\\ {\today}}
+%
+\setcounter{secnumdepth}{3} 
+\setcounter{tocdepth}{3}
+\begin{document}
+%  \maketitle
+\tableofcontents
+\chapter{Introduction (read me, please!)}
+
+\section{Why this document?}
+\label{sect:0;medusa_book}
+
+The goal of this book is to document the internal details of
+\ppmtp;. Yes, I know, you already guessed that by reading the
+title\ldots{} (if you didn't, you can stop reading here).  Maybe it is
+worth spending a few words about \emph{why} I felt the need to write
+this document.
+
+First, \emph{what is} \ppmtp;? \ppmtp; means \emph{Peer-to-Peer
+  Epi-Transport Protocol} and it is a project started at the University
+  of Udine (Italy).  The goal of \ppmtp; is to develop a socket-like
+  layer for efficient peer-to-peer (P2P) \emph{live streaming}.  I am
+  not going into details here why this is a cool idea and which kind
+  of problems must be solved.  The important point that I want to
+  emphasize here is that the \ppmtp; library is quite complex a piece
+  of software that (I hope) will be maintained in the future by other
+  developers (beside me).  Therefore, we need some documentation for
+  those future developers.
+
+I already modified open source software (sometimes for necessity,
+sometimes for fun) and my experience is that when you are trying to
+change a piece of software wrote by someone else, you do not need a
+verbose description of every single variable and line of code, but
+rather the ``big picture'' of the software.  Instead, it is not
+uncommon to find code which looks like (no kidding)
+
+\begin{verbatim}
+    int i, j;  /* Loop variables */       (really?!?)
+    count ++;  /* Increment count by 1 */ (Wow !)
+\end{verbatim}
+
+\noindent
+but no description of the ``high level structure'' of the software and
+you are left to yourself in finding the part you need to
+change\footnote{That can also be fun, mind you, unless you are in a
+rush\ldots}.  It is like entering a wood with a description of every
+single leaf, but no map.  Well, this document is the ``wood map.''
+
+\chapter{Rough overview}
+\label{chap:0;overview}
+
+This chapter gives you a \emph{very} rough overview of the internal
+structure of the \ppmtp; library.  Many details (even fairly important
+ones) are omitted for the sake of making the high-level structure more
+evident.  If you want all the gory details, go to the following
+chapters or look at the comments inside the code.
+
+\section{Sessions}
+\label{sect:0.1;overview}
+
+
+\begin{itemize}
+\item
+A single PC can join one or more P2P network at the time.  In \ppmtp;
+jargon each P2P network joined corresponds to a \textbf{Session}.
+\item
+A Session has (see \fref{session})
+\begin{itemize}
+  \item
+    One or more \textbf{Sources}.  Each source corresponds to a remote
+    peer which sends us data.
+  \item
+    One \textbf{Output queue} which holds the reconstructed packets
+    that will be read by the application program
+  \item
+    One or more \textbf{Channels}.  Each channel has one or more
+    \textbf{Targets} and each target corresponds to a remote peer that
+    receives data from us.  The targets in a same channel share the
+    same reduction parameters, i.e., Galois field, reduction vector
+    and reduction factor. Equivalently, one could say that the
+    reduction details are associated to the channel.
+
+    We decided to introduce both channels and targets in order to be
+    able to send different reduced version to different peers.  It is
+    reasonable to expect that the average home user will have only one
+    channel. 
+\end{itemize}
+\end{itemize}
+
+%
+\begin{figure}
+\centerline{\unafigura[0.8\textwidth]{session}}
+\caption{Overview of the internal structure of a Session 
+\label{fig:session}}
+\end{figure}
+%
+\subsection{The structure of a channel}
+\label{sub:0.1.0;overview}
+
+\fref{channel} shows in greater detail the internal structure of a
+Channel.  The Channel receive from the application level the packets
+to be transmitted.  Those packets are given to the \ttt Reducer! block
+which\ldots{} reduces them (no surprise here).  The reduction details
+are contained in the \ttt Reducer! block.  The reduced packets are
+finally sent to the Targets which transmits them to the remote peers.
+
+It is worth observing that a channel can also accept already reduced
+packets which bypass the \ttt Reducer! block (dashed line in
+\fref{channel}).  The explanation of why this can be useful is beyond
+the scope of this chapter.
+
+\begin{figure}
+\centerline{\unafigura{channel}}
+\caption{Internal structure of a Channel
+\label{fig:channel}}
+\end{figure}
+%
+
+\section{The doom of a packet}
+\label{sect:0.0;overview}
+
+\fref{main_task} shows a rough overview of what happens to the
+received packets.  The packets are received by the sources (each
+source is a \ttt task!).  The received packets are written to a common
+queue (implemented as a protected object in \ttt Ada!). The queue is
+read by the \ttt main_task! which gives the packet to the \ttt
+Reconstructor! block.  As soon as enough reduced packets are received,
+the \ttt Reconstructor! recover the packet and gives it back to the
+main task which in turn hands it to the Session.  
+Inside the Session the packet is sent to every Channel which reduces
+it and route it toward the remote peers.
+
+\begin{figure}
+\centerline{\unafigura{main_task}}
+\caption{Path of a packet
+\label{fig:main_task}}
+\end{figure}
+%
+\section{Code structure}
+\label{sect:0.2;overview}
+
+How the just outlined structure maps itself in the code?  Well, more
+or less, every ``block'' shown in the figures above corresponds to a
+directory just belove the top-level \ttt PPETP! directory.  There are few
+exceptions; for example, the code relative to the \ttt Reducer!  and
+\ttt Reconstructor! blocks are belove the \ttt Profiles/Basic!
+directory.  This is because the \ttt PPETP! specs do not specify how
+the ``reduction'' is done, but delegate such decisions to a
+``profile'' document (an approach similar to the one used for RTP).
+Therefore, we decided that the code relative to a profile will be
+in a subdirectory of \ttt Profiles!.  So far, only two profiles (\ttt
+Basic! and \ttt Vandermonde!) are defined.
+
+\chapter{Processing Profiles}
+
+
+The basic PPETP document describes only the basic packet format and
+how command/acknowledge are handled.  The description of how the
+original packets are processed and few details about the PPETP packet
+format are demanded to a different document (called \emph{profile
+  document}).  This type of two-level description is quite common and
+it is used, for example, for RTP \cite{rfc3550} and DCCP
+\cite{rfc4340} and it is interesting because it allows to add new
+functionality to the basic protocol by just adding a new profile.
+This chapter explains how the profile idea is implemented in the
+actual code.
+
+\section{What a profile is about}
+\label{sect:0;overview}
+
+A profile document describes, at least, 
+
+\begin{itemize}
+\item
+How the original stream of packet is processed in order to obtain the
+packets exchanged between peers  (\emph{entangling})
+\item
+Format details left unspecified by the transport level document, that
+is,
+\begin{itemize}
+\item
+The interpretation of the payload of the data packet
+\item
+The meaning of the profile-specific flags in the data header
+\item
+The interpretation of the detail payload (in the \ttt Set_Default!
+command packet).
+\end{itemize}
+\end{itemize}
+%
+\fref{profile} shows a detailed view of the path of a packet received
+from the network.  The green boxes/labels are relative to parts
+specified by the profile.
+
+\begin{figure}
+\centerline{\unafigura[0.9\textwidth]{profile}}
+\caption{Path of a network packet.  The green boxes/labels are
+  relative to parts decided by the specific profile.
+\label{fig:profile}}
+\end{figure}
+%
+
+\begin{itemize}
+\item
+The packet received from the network is called a \textbf{network packet}
+and it is nothing more than a sequence of bytes.  Such data are
+processed by a \textbf{Parser} which includes the knowledge of both the
+basic transport level and the profile level.
+\item
+The result of the parsing \emph{of a data packet} is a \textbf{entangled
+  packet}. It is reasonable to expect that this packet will be
+  represented by a \ttt record! structure.  The internal details of
+  such a structure depends entirely on the profile and only the
+  profile-specific functions need to be aware of them.  However, every
+  entangled packet will necessarily carry informations about
+\begin{itemize}
+\item
+The packet timestamp
+\item
+The packet session
+\end{itemize}
+%
+\item
+The sequence of entangled packets is sent to a \textbf{disentangler} whose
+duty is to recover the original packet stream from the received
+entangled streams. Note that the disentangler is specific to a single
+session.   The disentangler output is a stream of \textbf{binary} packets
+which are \emph{almost} sequences of bytes since they still carry the
+information about their timestamp and session.
+\item
+Each binary packet is sent both to the application level and to each
+channel associated with the session
+\item
+Each channel has its own \textbf{entangler} which processes the binary
+packets.  
+\item
+The entangled packets are sent to a \textbf{builder} which transforms
+them into network packets which in turn are sent to the targets
+associated with the channel.  Note that the builder, as the parser,
+must have knowledge of both the transport and the profile description.
+\end{itemize}
+%
+\begin{commento}
+\label{commento:0.0;overview}
+It is not necessary that the entangler in \fref{profile} is relative
+to the same profile of the disentangler, although we expect that this
+will often be the case.
+\end{commento}
+%
+\begin{commento}
+\label{commento:0.1;overview}
+Sometimes it could be convenient to send to the builder an entangled
+packet received from the network (dashed arrow in \fref{profile}).  Of
+course, this is possible only if entangler and disentangler are
+relative to the same profile.
+\end{commento}
+%
+\section{How a profile is implemented}
+\label{sect:0.3;overview}
+
+In order to mirror the flexibility given by the use of profiles, we
+decided to implement them as a hierarchy of objects.  More precisely,
+a profile is described by the following five ``active'' objects (i.e.,
+objects which ``do'' something) and two ``passive'' ones (i.e.,
+objects which are pure data structures)
+
+\begin{description}
+\label{description:0.3.0;overview}
+\item[Active]~
+  \begin{description}
+    \item[Parser]
+    \item[Builder]
+    \item[Entangler]
+    \item[Disentangler]
+    \item[Configuration Parser]
+  \end{description}
+\item[Passive]~
+  \begin{description}
+    \item[Entangled]
+    \item[Parameters]
+  \end{description}
+\end{description}
+%
+\begin{commento}
+  The meaning of the classes above should be clear from the discussion
+about \fref{profile}.  The only object which is not present in
+\fref{profile} is \emph{Parameters} which represents the parameters
+used in the (dis-)entangling process.
+\end{commento}
+%
+\begin{commento}
+  To be honest, all the object listed above are derived from abstract
+  tagged type \ttt Root_Profile_Handler!.  Although such a
+  relationship could seem not necessary at first, it is convenient it
+  allows to add to every profile-related object a \ttt Profile! field.
+  Currently the only method \ttt Root_Profile_Handler! is \ttt
+  Profile!. \fref{classes} gives a pictorial representation of the
+  class hierarchy related with processing profiles.
+\end{commento}
+%
+\begin{figure}
+\centerline{\unafigura[0.95\textwidth]{profile-classes}}
+\caption{Hierarchy of the classes related with processing profiles.
+  In order to not clog the figure, only the descendants of
+  \protect\ttt Root\_Entangler! are shown.
+\label{fig:classes}}
+\end{figure}
+%
+In the code we define a ``root'' \emph{abstract} object for each
+class.  Such abstract classes are collected, in the \ttt Ada! version
+in a single package.  It is expected that every new profile will be
+implemented in a \emph{child package} and it will specialize the
+abstract classes to actual leaf classes.  Note that the use of
+hierarchy of classes allows us to have, for example, arrays of \ttt
+Parser! which can contain parsers of different profiles (To be honest:
+the array will actually be an array of \emph{access}-es to class-wide
+type \ttt Parser'Class!\footnote{Do you ignore what ``class-wide
+type \ttt Parser'Class!'' means? Go reading an \ttt Ada!
+tutorial\ldots})
+
+The conceptual actions required to the classes above are
+
+\begin{description}
+  \item[Parser]  The parser will be called to parse the ``tail'' of a
+  command/data packet after the header has been parsed.  More
+  precisely, when processing a data packet the parser will receive
+  \begin{itemize}
+    \item The received network packet
+    \item The value of the profile-specific flags
+    \item The value of the in-line flag
+  \end{itemize}
+  and it will return an \ttt Entangled! packet (of the type suitable for the
+  \ttt Parser! profile); when processing a command \ttt Set_Default!
+  packet it will receive the network packet and it will return a
+  record of type \ttt Parameters!.
+%
+  \item[Builder] The \ttt Builder! duty is, in some sense, the
+  opposite of the duty of the \ttt Parser!.  When processing data, it
+  will be called with an \ttt Entangled! packet and it will return (i)
+  the byte sequence corresponding to the payload (ii) the value of the
+  profile-specific flags and (iii) the value of the in-line flag.  When
+  processing \ttt Set_Default! command packet, it will be called with
+  the \ttt Parameter! data and it will return the command packet
+  payload.
+%
+  \item[Entangler] The duty of this object is to apply the entangling
+  processing to each packet.  It receives in input a \ttt
+  Binary_Packet! and returns an \ttt Entangled! packet.
+%
+  \item[Disentangler] This object is slightly more complex than the
+  objects above.  The reason is that while the objects above can be
+  seen (more or less) as ``functions'' which return a result each time
+  are used, a \ttt Disentangler! may require to receive more than one
+  \ttt Entangled! packet before returning a \ttt Binary! packet.  For
+  example, in the \ttt Vandermonde! profile, a \ttt Disentangler! must
+  receive a number of \ttt Entangled! packets which is greater or
+  equal than the reduction factor.
+
+  In order to allow for this non 1-to-1 behavior, we suppose that a
+  \ttt Disentangler! has an ``internal queue'' of recovered packets.
+  The \ttt Disentangler! receives \ttt Entangled! packets, process
+  them and, when possible, recovers the corresponding \ttt Binary!
+  packet.  Every recovered \ttt Binary! packet is inserted in the
+  internal queue of the \ttt Disentangler!.  The queue can be read by
+  means of suitable methods.  
+
+  More in detail, a \ttt Disentangler! will respond to the following
+  methods
+  \begin{description}
+    \item[Process] This method receives in input an \ttt Entangled!
+    packet, process it and, if possible, recover one or more \ttt
+    Binary! packets which are inserted in the internal queue.
+    \item[Force] By calling this method we ask the \ttt Disentangler!
+    to insert into the internal queue a previously received \ttt
+    Entangled! packet. This method requires in input the timestamp of
+    the required packet. The reason for this is that sometimes we
+    could be not able to recover in time a packet, but we want
+    nevertheless to propagate the corresponding information.  
+    \item[Get] Extract the first packet (which can be a \ttt Binary!
+    one or an \ttt Entangled!, depending on which method [\ttt
+    Process! or \ttt Force!] wrote it) from the internal queue.  If the
+    queue is empty, it raises \ttt Empty_Queue!.  
+    \item[Any\_Ready] Return \ttt True! if there is at least one
+    packet in the internal queue.
+    \item[Forget] In some applications, a packet is useless if it
+    cannot be recovered in time.  By calling method \ttt Forget! we
+    say to the \ttt Disentangler! that packets with a given timestamp
+    is not required anymore.  This allows the \ttt Disentangler! to
+    recover the memory used for that packet.  After a call to \ttt
+    Forget! the \ttt Disentangler! is allowed to discard any packet
+    with the same timestamp passed to \ttt Forget!.
+  \end{description}
+  \item[Configuration Parser]  This object is used to map externally
+  received strings into profile parameters.  This object must
+  implement a method \ttt Parse! which expect as input a ``table'' of
+  \ttt (name, value)! pairs, where \ttt name! is the parameter name
+  and \ttt value! is the parameter value (quite obvious, isn't?).
+  Method \ttt Parse! will return any errors in a list of error
+  descriptors.  Each error descriptor is a \ttt record! with at least
+  the following fields: \ttt Name!, \ttt Value! and \ttt Reason!.  The
+  first two are the values found in the table, while the last one
+  describe what kind of error occured.  Currently, the following
+  values for \ttt Reason! are possible
+  \begin{description}
+  \item[\ttt Param\_Unknown!] The parameter name is not known
+  \item[\ttt Invalid\_Value!] The parameter value is not valid
+  \item[\ttt Param\_Missing!] A mandatory parameter is not present.
+  Field \ttt Name! contains the name of the missing parameter, while
+  field \ttt Value! contains the empty string.
+  \item[\ttt Multiple\_Param!] A parameter was given more than once.
+  \end{description}
+%
+\end{description}
+
+\chapter{Authentication profiles}
+\label{chap:1;overview}
+
+\section{Motivation}
+\label{sect:1.0;overview}
+
+The \ppetp- specs include also a mechanism for contacting remote nodes
+and ask them to open a new channel toward a new destination.  That
+mechanism can be used by a node to request data or also by a ``root
+server'' to comand a node to send data to another node.  Such a
+mechanism is the potential source of several security problems, for
+example 
+
+\begin{itemize}
+  \item
+    Node $A$ could saturate the output band of node $B$ (causing a
+    DOS\footnote{Denial of Service}) by asking to $B$ an excessive
+    number of streams.
+  \item
+    Node $A$ could flood $C$ by asking to $B$ to send data to $C$
+  \item
+    In a scalable context, where one can get a better quality by
+    receiving more data, one user with a low-quality subscription
+    could obtain a better quality by asking to its peer more than its
+    share of streams.
+  \item
+    A paying user could give to a non-paying one the addresses of the
+    peers on the network allowing the non-paying user an unauthorized
+    access to the data stream.
+\end{itemize}
+
+In order to avoid such problems, the \ppetp- specs includes means to
+authenticate the connection request.  Typically, the authentication
+credentials are created by a ``supernode'' which both peers trust and
+are appended as payload to the packet with the connection request. 
+In order to allow for future adaptation of new authentication schemes,
+the \ppetp- document does not describe the authentication details, but
+it delegates separate ``profile'' descriptions (similarly to what is
+done for the processing profile).
+
+Currently the \ppetp- specs include three authentication profiles
+
+\begin{description}
+  \item[Void] With this profile no authentication is done and every
+  request is accepted.  This profile is obviously very unsecure and it
+  is to be used only in the most controlled
+  situations (e.g. testing).
+  \item[Token] With this protocol an ``authority'' (e.g., the root
+  server in a video streaming application) gives at each node a list
+  of ``tokens'' (randomly generated 64 bit bitstrings).  Every time
+  one node wants to contact another one, it asks to the authority
+  (which will check the identity of the node) for a token which will be
+  included in the connection request.  
+  \item[Signed] The token approach has two drawbacks
+    \begin{itemize}
+      \item
+        It requires to the server to store all the token sent to every
+        clients 
+      \item
+        Two persons could share the same subscription, but with a
+        smaller quality, if one sends to the other part of the
+        received tokens.  Since the tokens are not ``bound'' to the
+        node which issues the \ttt Send_Data! request, the second
+        person can use the tokens to access the data.
+    \end{itemize}
+   The \textbf{Signed} profile overcomes those drawbacks.  Within this
+   profile the authority sends to the node a common key that will be
+   used to sign the IP address of the authorized node.
+\end{description}
+
+\section{Authentication profile implementation}
+\label{sect:1.1;overview}
+
+Similarly to the case of processing profiles, we mantain the
+flexibility of the \ppetp- specs by declaring ``root'' abstract types
+which correspond to the authentication primitive operations and
+implementing each profile by deriving from the root types.
+
+Actually, the only action that is required for profile implementation
+is credential checking.  Therefore, we define an abstract
+\textbf{Root\_Checker} with an abstract method \textbf{Check} which
+accepts a \ttt Stream_Element_Array! in input and returns \ttt True! if
+the credentials are correct (\ttt False! otherwise).  The root type is
+defined in package \ttt Auth_Profile! in the \ttt Auth! directory.  It
+is expected that authentication profiles will be implemented as child
+packages of \ttt Auth_Profile! in subdirectories of \ttt
+Auth!. \notainterna{These are just rough notes.  Things may change
+  when we will actually implement the profiles}
+
+\chapter{Internal data structures}
+\label{chap:2;overview}
+
+In the PPETP library there are several data structures which represent
+the data exchanged with peers.  The goal of this chapter is to give a
+rough overview of those data structures.
+
+The most important data structures are
+
+\begin{description}
+\item[\ttt Binary\_Packet!] An abstract type which represents ``raw''
+  arrays of bytes.  This type is used to derive three concrete types
+  \begin{description}
+     \item[\ttt Network\_Packet!] It contains the data received from a
+       peer/ready to be sent to a peer.  It is just an array of bytes
+       with attached the sender's address.
+        \begin{description}
+          \item[Parsing] It is parsed by the procedures in \ttt
+            packets-protocol-parsing! and, for the profile-specific part,
+            by the methods of descendants \ttt Root_Parser!.
+          \item[Building] It is created by the procedures in
+            \ttt packets-protocol-building! and, for the profile-specific part,
+            by the methods of descendants \ttt Root_Builder!.
+        \end{description}
+        %
+     \item[\ttt Application\_Packet!] It represents the ``packets''
+       exchanged with the upper layer application.  More or less, it is a
+       byte array with a timestamp attached.  Packets of this type are
+       both received from the upper layer application and created by
+       profile disentanglers.  This type of packet is processed by
+       profile entanglers in order to create entangled data.
+  \end{description}
+\item[\ttt Protocol\_Packet!] An abstract type which represents a
+  generic PPETP packet.  This type is specialized in two concrete
+  types
+  \begin{description}
+    \item[\ttt Data\_Packet!]  
+    \item[\ttt Control\_Packet!]
+  \end{description}
+\item[\ttt Internal\_Command!] Packets of this type are created by the
+  input tasks (which first convert \ttt Received_Packet!s to \ttt
+  Protocol_Packet!s and successively embeds the result into an \ttt
+  Internal\_Command! structure).  Records of type \ttt
+  Internal\_Command! can hold also informations which do not derive
+  from a \ttt Protocol_Packet!.  For example, a \ttt Internal_Command!
+  is used to signal a timeout event on an input source.
+\item[\ttt Parsing\_Buffer!]  The goal of an object of this type is to
+  contain the data received from the remote peer and allow for a
+  simple access for the parsing procedures.  Although it could seem
+  that a \ttt Stream_Element_Array! would suffice, a \ttt
+  Parsing\_Buffer! has several methods which makes easier to convert
+  sequence of bytes to other types, to check that there are enough
+  bytes, and so on.   It is created by parsing procedures  from the
+  data contained in a \ttt Network_Packet!.  It is used by all the
+  parsing procedures (both profile-related or not).
+\end{description}
+%
+
+\bibliographystyle{alpha}
+\bibliography{medusa_biblio}
+
+
+\end{document}
+
+% LocalWords:  Epi Udine Reconstructor PPETP RTP Vandermonde DCCP timestamp
+% LocalWords:  Parser'Class medusa biblio

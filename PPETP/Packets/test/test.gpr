@@ -1,0 +1,22 @@
+-- -*- mode: Ada -*-
+project Test is
+
+   for Object_Dir use "obj";
+   for Source_Dirs use (".", "../", "../../", "../../Profiles", "../../Profiles/Basic", "../../Auth", "../../Auth/Checkers", "../../Auth/Profiles", "../../low-level-lib/Test_Lib", "../../low-level-lib/Network", 
+"../../low-level-lib/Utilities", "../../low-level-lib/Parsing_Buffers", "../../low-level-lib/Smart_Pointers");
+   for Main use ("utility_test.adb", "binary_test.adb", "control_building_parsing_test.adb", "data_building_parsing_test.adb");
+
+   package Linker is
+      for Default_Switches ("ada") use ("-fprofile-generate");
+   end Linker;
+
+   package Compiler is
+      for Default_Switches ("ada") use ("-g", "-gnata", "-ftest-coverage", "-fprofile-arcs");
+   end Compiler;
+
+   package Builder is
+      for Default_Switches ("ada") use ("-s", "-g");
+   end Builder;
+
+end Test;
+

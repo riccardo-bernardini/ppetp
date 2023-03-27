@@ -1,0 +1,60 @@
+start         = Configuration
+
+Configuration = element configuration { Session+ }
+
+Session       = element session { 
+                  attribute port { xsd:unsignedShort },           
+                  Profile,
+                  Server, Output, Input }
+
+Server        = element server {
+                   attribute address { text },
+                   attribute port    { xsd:unsignedShort },
+                   attribute id      { xsd:hexBinary }
+                }                    
+              
+Output        = element output { Channel+ }
+
+Channel       = element channel { 
+                  attribute id { xsd:integer },
+                  attribute max-target { xsd:integer }?,
+                  Profile, Auth-data? 
+                }
+
+Profile       = element profile {
+                  ( attribute name { "basic" | "vandermonde" } 
+                  | attribute id 
+                     { xsd:integer 
+                         { minInclusive = "1"  maxInclusive = "2" }
+                     }),
+                  Parameter* 
+                }
+Parameter     = element parameter {
+                   attribute name  { text },
+                   attribute value { text }
+                }
+              
+Input         = element input { Peer+ }
+Peer          = element peer  { Address, Auth-data? }
+Address       = element address {
+                   attribute address { text },
+                   attribute port    { xsd:unsignedShort },
+                   attribute channel { xsd:integer 
+                                         { minInclusive = "0" 
+                                         maxInclusive = "15"} }
+                } 
+
+Auth-data     = element auth-data {
+                   Auth-profile,
+                   Auth-token*
+                }
+
+Auth-profile  = element auth-profile {
+                   (attribute name { "void" | "token" | "signed" }
+                  | attribute id { xsd:integer })
+                }
+
+Auth-token    = element auth-token {
+                   attribute command { "stop" | "start" }?,
+                   attribute value { xsd:hexBinary }
+                }

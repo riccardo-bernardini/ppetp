@@ -1,0 +1,415 @@
+%-*- mode: latex; ispell-local-dictionary: "english" -*-
+\documentclass{medusabook}
+
+\usepackage{amsmath}
+\usepackage{amsbsy}
+\usepackage{amssymb}
+\usepackage{amsthm,amsfonts}
+\usepackage{color}
+\usepackage{srcltx}
+\usepackage{appendix}
+\input{macrodef}
+%
+%\titleimage{chestCN9697}% clarita1000@gmail.com
+\title{Processing module}
+\author{R. Bernardini}
+%
+\setcounter{secnumdepth}{3} 
+\setcounter{tocdepth}{3}
+\begin{document}
+  \maketitle
+\tableofcontents
+
+\chapter{A quick tour}
+\label{chap:0;dsp_book}
+
+\section{Warning}
+\label{sect:0.0;dsp_book}
+
+I'll assume that you already know what the processing module is and
+what is its duty.  I'll also assume that you are familiar with
+\medusa- nomenclature and that you understand the meaning of
+expressions such as \emph{analog component}, \emph{reduction vector}
+and \emph{reduced packet}.  If you do not, I suggest you to read the
+document \emph{Medusa internals} that you'll find a couple of
+directories above this\ldots
+
+\section{Overview of the Processing Module}
+\label{sect:0.1;dsp_book}
+
+As you (should) know, the processing module is the ``heart'' of
+\medusa- since it is the module which receives the reduced packets,
+reconstructs the original stream and produces a new reduced stream
+which is forwarded to other peers.  Because of this, this module is
+maybe the most complex module of \medusa-.  The goal of this document
+is to explain the internal structure of the processing module.
+
+An overview of the behaviour of the processing module is the following
+\begin{itemize}
+\item
+A new \emph{network packet} is received from a peer
+\item
+The network packet is split into its \emph{encoded components}.  The
+type of each component is known since the server gave us such an
+information with the \ttt MMEDIA! command.
+\item
+Each component is  \emph{decoded}.  This step is typically trivial for
+a binary component, but it is necessary for an analog component.
+\item
+Each decoded component is given to the
+corresponding \emph{processor} which 
+\begin{itemize}
+  \item
+    Stores the reduced component in an internal table
+  \item
+    If there are enough reduced components to reconstructs the original
+    component 
+    \begin{itemize}
+      \item
+        Reconstruct the component
+      \item
+        Compute your own reduced component and encode it. 
+      \item
+        If all the reduced components with a given timestamp have been
+        computed, create a new network packet and transmit it to the
+        other peers.
+      \item
+        If all the components of a multimedia packet have been
+        reconstructed, recreate the packet and send it to the player.
+    \end{itemize}
+\end{itemize}
+\end{itemize}
+%
+With reference to the \medusa- multimedia model, we can say that a
+processor processes a single stream.  In the case of contents with
+more than one constituent or more than one stream, several different
+processors will be allocated.
+
+\subsection{The multitasking structure}
+\label{sub:0.1.0;dsp_book}
+
+Beside the steps described above, the processing module needs also to
+send data to other peers and receive data and commands from different
+TCP/UDP ports.  The program is much simpler if the duty of the
+processing module are partitioned among different threads of
+execution implemented as Ada \ttt task!s.
+
+In \fref{structure} one can see a ``low resolution'' view of the
+processing module. Tasks are shown with continuous line boxes, Ada
+protected objects are shown with double rounded boxes and ``internal
+parts'' of tasks are shown with dashed line boxes.  As shown in
+\fref{structure}, there are several \ttt Reader! tasks which listen to
+TCP/UDP ports for data or commands.  When a \ttt Reader! receives some
+data, writes it to the \ttt Input Queue! (which can store both
+commands and multimedia data).  The \ttt Input Queue! is read by the \ttt Main!
+task.  The data read is given to an internal interpreter (if it is a
+command) or to the \ttt Processor! (if it is multimedia data, i.e., a
+\ttt network\_packet!).  The results produced by the \ttt Processor!
+(reconstructed multimedia packets and new reduced \ttt
+network\_packet!) are sent to two packet queues which are read by the
+two \ttt Writer!s.  One \ttt Writer! sends packets to the other peers,
+while the other sends data to the player.
+
+\begin{figure}
+\centerline{\unafigura{structure}}
+\caption{Structure of the processing module
+\label{fig:structure}}
+\end{figure}
+%
+Both the \ttt Network Queue! and the \ttt Player Queue! shown in
+\fref{structure} are special queues since they receives components
+(reduced and encoded components the \ttt Network Queue!, reconstruced
+components the \ttt Player Queue!) and returns ``complete'' packets.
+Since the reconstruction of the packet from its components is done
+inside the queue, those queues are called \emph{synthesis queues} or
+\emph{S-queues}. 
+
+\subsection{Processor structure}
+\label{sub:0.1.1;dsp_book}
+
+Going into even deeper details, \fref{processor-structure} shows the
+internal structure of the \ttt Processor! block of \fref{structure}.
+The \ttt network\_packet!s read from the \ttt Input Queue! are first
+split into their components by block \ttt Splitter!.  Succesively they
+are (eventually) decoded by block \ttt Decoder! and sent to the
+corresponding processor (\emph{analog} or \emph{binary}). 
+
+\begin{figure}
+\centerline{\unafigura{processor-structure}}
+\caption{Internal structure of the processor block
+\label{fig:processor-structure}}
+\end{figure}
+%
+Both processors share the same structure: 
+\begin{itemize}
+  \item A \emph{Decoder} whose duty is to decode the encoded
+  components extracted by the network packet.  It is reasonable to
+  expect that in the binary case this module will be trivial.
+  \item A \emph{Recover} block whose
+   duty is the reconstruction of the unreduced components. The output
+   of the recover block goes both to the succesive block and to the
+   player S-queue.
+  \item A \emph{Reducer} block which takes a component and reduces
+  it. 
+  \item An \emph{Encoder} which maps the reduced component to a
+  bitstring. It is reasonable to expect that in the binary case this
+  module will be trivial.  The encoded components are sent to the
+  network S-queue.
+\end{itemize}
+
+\subsection{Use of \ttt generic! packages}
+\label{sub:0.1.2;dsp_book}
+
+It is clear that the internal core of the processing module is made of
+several similar modules and many actions (especially packets
+homekeeping) are common to many packages.  This suggests of the \ttt
+generic package! feature of \ttt Ada!
+
+\chapter{The generic processor}
+
+The analog and binary processors are implemented as specializations of
+a generic processor.  More precisely, in directory  \ttt Processor/Generic!
+one can find package \ttt Generic\_Processor! which provides a \ttt
+Processor\_Type! type.  According to \fref{processor-structure}, in
+order to have a fully working processor one must specify
+
+\begin{itemize}
+\item
+The encoder/decoder blocks
+\item
+The recover block
+\item
+The reducer block
+\end{itemize}
+%
+Each block is represented by a type with a collection of methods (for
+example, the encoder must respond to an \ttt Encode!  method; the
+recover object must accept new reduced components and returns complete
+components.).  Specifying those blocks require also to specify their
+types and the types they work with.  More precisely,
+
+\begin{itemize}
+  \item
+    The type of the reduced component (output of the decoder block and
+    input of the recover and encoder blocks)
+  \item
+    The type of the complete component (output of the recover block
+    and input of the reducer block)
+\end{itemize}
+%
+The actual blocks (that is, the actual objects which will be used to
+carry out the decoding/recovering/reducing/encoding steps) 
+specified at initialization time.  This will allows for having
+several, say, analog processors using different enconding
+procedures.\footnote{I believe that if such a flexibility is desired,
+  the encoder/decoder types should be \ttt Ada! class types}.
+
+\begin{description}
+\item[\ttt Initialize!] Of course, this is the first function to be
+  called.  This function will need 
+  \begin{itemize}
+    \item The destination S-queues
+    \item The encoder/decoder objects
+  \end{itemize}
+\item[\ttt Receive!] This procedure is used to give a new \ttt
+  network\_crumb! to the processor.
+\item[\ttt Packet\_Needed!] This procedure is used to request a packet
+  with a given timestamp when the packet deadline is going to expire.
+  Note that the processor sends packets to the network and player
+  S-queues as soon as they are ready.  However, it is possible to
+  request to the processor a packet ``with urgency'' by using this
+  procedure.
+\item[\ttt Packet\_Lost!] This procedure is used to signal to the
+  processor that a packet deadline expired and that the packet has
+  been declared lost.  The processor can free any resource used for
+  the lost packet.
+\end{description}
+%
+
+\chapter{Data Types}
+\label{chap:1;dsp_book}
+
+Inside the processor module data mainly travel in ``packets.''  There
+are several types of packets
+
+\begin{description}
+\item[\ttt network\_packet!]  This represents the packet received via
+  the network and suitably parsed to an internal representation. (The
+  parsing from a collection of byte to the internal representation
+  will be done, most probably, inside the task \ttt reader!).  Among
+  its fields it will have
+  \begin{description}
+    \item[\ttt Timestamp!] which coincides with the \ttt
+    Multimedia\_Timestamp! associated with the corresponding
+    multimedia packet (remember that there is a one-to-one
+    correspondence between multimedia and network packets)
+    \item[\ttt Stream\_ID!] which determines the stream the packet
+    belongs to.
+    \item[\ttt Class!] Inherited from the corresponding \ttt
+    multimedia_packet!.  The purpose of this field is to allow to
+    distinguish among different packet types in a single stream, e.g.,
+    B, P and I packets in a video stream.
+    \item[\ttt Priority!] Inherited from the corresponding \ttt
+    multimedia_packet!.  The purpose of this field is to allow for
+    selective dropping of packets in case of congestion.
+    \item[\ttt Payload!] An array of \ttt network_crumb!s
+  \end{description}
+ \item[\ttt network\_crumb!] It represents the encoded version of a
+ reduced component.  It is extracted from a \ttt network_packet! by
+ the \ttt Splitter! module and sent to the corresponding processor (on
+ the basis of its \ttt Stream_ID!).  It will decoded by the \ttt
+ Decoder! module to obtain the corresponding \ttt
+ reduced_component!. Among its fields a \ttt network_crumb! has
+ \begin{description}
+   \item[\ttt Timestamp!] Inherited from \ttt network_packet!
+   \item[\ttt Stream\_ID!] Inherited from \ttt network_packet!
+   \item[\ttt Reduction\_IDX!] A long integer which identifies
+   the \emph{reduction vector} used to reduce the component.
+   \item[\ttt Component\_IDX!] An integer which identified the
+   component type.
+   \item[\ttt Payload!] The bitstring which represents the encoded
+   content. 
+ \end{description}
+ \item[\ttt reduced\_component!] It represents the reduced version of
+ a component (analog or binary).\footnote{To be precise, there are at
+ least two types of \ttt reduced\_components!: \ttt reduced\_analog! and
+ \ttt reduced\_binary!.}  Among its fields it has
+ \begin{description}
+   \item[\ttt Timestamp!] Inherited from \ttt network_crumb!
+   \item[\ttt Stream\_ID!] Inherited from \ttt network_crumb!
+   \item[\ttt Reduction\_IDX!] Inherited from \ttt network_crumb!
+   \item[\ttt Component\_IDX!] Inherited from \ttt network_crumb!
+   \item[\ttt Payload!] The values associated with the reduced
+ component.  It is an array of \ttt Float! or \ttt GF! elements.
+ \end{description}
+%
+ \ttt Reduced_component!s are fed to the \ttt Recover! block and
+ produced by the \ttt Reducer! block.
+ \item[\ttt complete\_component!] It corresponds to a component of the
+ original multimedia packet.  It share with the \ttt
+ reduced_component! all the fields but \ttt Reduction_IDX!. \ttt
+ Complete_component!s are produced by the \ttt Recover! block and fed
+ to the  \ttt Reducer! block and to the player \ttt S-queue!.
+ \item[\ttt multimedia\_packet!] This represents the data packet sent
+ to the player.  Its format is clearly very dependent on the used
+ multimedia format.  It is created by the \ttt S-queue! associated
+ with a player.
+\end{description}
+%
+
+\chapter{Transport layer}
+\label{chap:2;dsp_book}
+
+\section{Introduction}
+\label{sect:2.0;dsp_book}
+
+\medusa- is still in an experimental state. In order to allow for
+flexibility in the network structure, we decided to use a thin
+meta-transport layer which would make the rest of the software
+independent on the chosen transport mechanism.  A the moment, this
+chapter is  just a ``collection of notes.''  I still need to ``comb my
+ideas.'' 
+
+\section{Internal structure}
+\label{sect:2.1;dsp_book}
+
+The thin layer will present to the rest of \medusa- a transport
+mechanism that grants that no packet will be received more than once
+and with no packet size limit.  Delivery and packet order are not
+granted.  The API of the thin layer will not require the allocation of
+fixed-size buffers.  The underling protocol will initially be
+UDP-based, but maybe we will transition to transport protocols with
+rate control, such as DCCP or UDP+TFRC.  Possibly \medusa- will have
+its own set of port numbers, mapped to the ports of the underling
+transport protocol in some definite way.
+
+\fref{network_layers} shows a possible decomposition of the structure
+of the network layer in \medusa-.  The sublayers shown in
+\fref{network_layers} will be quite ``thin.''
+
+\begin{figure}
+\centerline{\unafiguray[10cm]{network_layers}}
+\caption{
+\label{fig:network_layers}}
+\end{figure}
+%
+The upper-level API (the API exposed to the rest of \medusa-) will
+have the following procedures
+
+\begin{description}
+  \item[{\ttt Open\_Source!}]  Open a ``listening point'' from which we
+  will receive the data packets
+  \item[{\ttt Receive!}] Used to receive data/command packets from
+  other peers.
+  \item[{\ttt Open\_Destination!}] Open an ``output stream'' used to
+  send data to other peers.  
+  \item[{\ttt Send\_Data!}] Used to send a data packet to another peer.
+  \item[{\ttt Send\_Commnad!}] Used to send a command to another peer.
+\end{description}
+
+\subsection{Duplicate elimination}
+\label{sub:2.1.1;dsp_book}
+
+This layer limits the size of the packets sent to the lower layer by
+possibily fragmenting the packets received by the upper layer.  On the
+receiver side it remounts the packets.  Moreover, it take care of
+duplicated received packets.  To accomplish such a goal, this layer
+will add to the packets an auxiliary 4-byte header
+
+\begin{verbatim}
+  typedef struct {
+    unsigned reserved         :8;
+    unsigned max_fragment_idx :4;  
+    unsigned fragment_idx     :4;
+    unsigned timestamp        :16;
+  }
+\end{verbatim}
+%
+The fragments are numerated with integers $0$, $1$, \ldots, \ttt
+max_fragment_idx!.  Clearly, if \ttt max_fragment_idx! is equal to
+zero, only one fragment is present.  Since we expect the fragment size
+to be 1500 bytes, this allows us to use packets as large as 24000
+bytes (this should be plenty).  The \ttt reserved! field is reserved
+for future extensions (e.g., for allowing for different ways of
+fragmenting the packets) and it should be zero.
+
+\subsection{Bounded-size transport layer}
+\label{sub:2.1.0;dsp_book}
+
+Most probably the bounded-size transport layer will be a very thin
+layer.  It should expose an API including
+
+\begin{description}
+  \item[{\ttt receivefrom!}] Similar to the corresponding function in
+  the BSD socket API
+  \item[{\ttt sendto!}] Similar to the corresponding function in
+  the BSD socket API
+\end{description}
+%
+Since the transport exposed by the bounded-size network layer is
+UDP-like, there is no necessity for an \ttt open! function.  Actually,
+with DCCP or UDP+TFRC there is a ``session open'' stage, but this
+could be hidden inside the \ttt sendto! function (which could
+automatically open the session and keep a cache of opened sessions).
+
+When working with pure UDP as transport layer, this layer will be a
+very thin one, just mirroring the UDP API.  When using other transport
+means (e.g., DCCP or UDP+TFRC) this layer will also take care of all
+the added management.  
+
+In \ttt Ada! there are several solutions for making this layer
+``flexible'' 
+
+\begin{enumerate}
+  \item
+    Implement the upper layer in a generic package which accepts in
+    its formal parameters the package which implements this layer.
+  \item 
+    Define an abstract root object and implement each bounded-size
+    layer version as a derived type.
+\end{enumerate}
+%
+The former solution could maybe more efficient, but the latter would
+allow for having several different layers at the same time.
+
+\end{document}

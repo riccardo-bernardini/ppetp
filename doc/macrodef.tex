@@ -1,0 +1,227 @@
+%-*- mode: latex; iso-accents-mode: nil; -*-
+
+%
+% Macro definition for medusa_book.  The following definitions have
+% been ``cut-and-paste''d from my LaTeX definition file, so every now
+% and then there are some macros with italian names.  Maybe one day
+% I'll do some renaming.  At least, name clashes become very
+% improbable...
+%
+
+\newif\ifhaschapter
+\makeatletter
+\@ifundefined{c@chapter}{\haschapterfalse}{\haschaptertrue}
+\makeatother
+
+%
+% Shorthand for \texttt, used for source code & simila.  Usually I do
+% not love an excessive use of shorthand, but this is too frequent...
+%
+%\def\ttt#1!{\texttt{#1}}
+%
+% New version of the above comand which makes '_' category equal to
+% ``letter.''  This allows me to write \ttt Multimedia_Timestamp!
+% instead of \ttt Multimedia\_Timestamp!
+%
+\def\ttt{\catcode`\_=12 \tttii}
+\def\tttii#1!{{\tt #1}\catcode`\_=8{}}
+%
+% -- Lettere bold
+%
+\newcommand{\bfa}{{\mathbf a}}
+\newcommand{\bfb}{{\mathbf b}}
+\newcommand{\bfc}{{\mathbf c}}
+\newcommand{\bfd}{{\mathbf d}}
+\newcommand{\bfe}{{\mathbf e}}
+\newcommand{\bff}{{\mathbf f}}
+\newcommand{\bfg}{{\mathbf g}}
+\newcommand{\bfh}{{\mathbf h}}
+\newcommand{\bfi}{{\mathbf i}}
+\newcommand{\bfj}{{\mathbf j}}
+\newcommand{\bfk}{{\mathbf k}}
+\newcommand{\bfl}{{\mathbf l}}
+\newcommand{\bfm}{{\mathbf m}}
+\newcommand{\bfn}{{\mathbf n}}
+\newcommand{\bfo}{{\mathbf o}}
+\newcommand{\bfp}{{\mathbf p}}
+\newcommand{\bfq}{{\mathbf q}}
+\newcommand{\bfr}{{\mathbf r}}
+\newcommand{\bfs}{{\mathbf s}}
+\newcommand{\bft}{{\mathbf t}}
+\newcommand{\bfu}{{\mathbf u}}
+\newcommand{\bfv}{{\mathbf v}}
+\newcommand{\bfw}{{\mathbf w}}
+\newcommand{\bfx}{{\mathbf x}}
+\newcommand{\bfy}{{\mathbf y}}
+\newcommand{\bfz}{{\mathbf z}}
+%
+\newcommand{\bfA}{{\mathbf A}}
+\newcommand{\bfB}{{\mathbf B}}
+\newcommand{\bfC}{{\mathbf C}}
+\newcommand{\bfD}{{\mathbf D}}
+\newcommand{\bfE}{{\mathbf E}}
+\newcommand{\bfF}{{\mathbf F}}
+\newcommand{\bfG}{{\mathbf G}}
+\newcommand{\bfH}{{\mathbf H}}
+\newcommand{\bfI}{{\mathbf I}}
+\newcommand{\bfJ}{{\mathbf J}}
+\newcommand{\bfK}{{\mathbf K}}
+\newcommand{\bfL}{{\mathbf L}}
+\newcommand{\bfM}{{\mathbf M}}
+\newcommand{\bfN}{{\mathbf N}}
+\newcommand{\bfO}{{\mathbf O}}
+\newcommand{\bfP}{{\mathbf P}}
+\newcommand{\bfQ}{{\mathbf Q}}
+\newcommand{\bfR}{{\mathbf R}}
+\newcommand{\bfS}{{\mathbf S}}
+\newcommand{\bfT}{{\mathbf T}}
+\newcommand{\bfU}{{\mathbf U}}
+\newcommand{\bfV}{{\mathbf V}}
+\newcommand{\bfW}{{\mathbf W}}
+\newcommand{\bfX}{{\mathbf X}}
+\newcommand{\bfY}{{\mathbf Y}}
+\newcommand{\bfZ}{{\mathbf Z}}
+%
+\newcommand{\bfomega}{{\boldsymbol\omega}}
+\newcommand{\bflambda}{{\boldsymbol\lambda}}
+\newcommand{\bfepsilon}{{\boldsymbol\epsilon}}
+\newcommand{\bfdelta}{{\boldsymbol\delta}}
+\newcommand{\bfDelta}{{\boldsymbol\Delta}}
+\newcommand{\bfalpha}{{\boldsymbol\alpha}}
+\newcommand{\bfeta}{{\boldsymbol\eta}}
+\newcommand{\bfzero}{{\boldsymbol 0}}
+\newcommand{\bfuno}{{\boldsymbol 1}}
+\newcommand{\bfell}{{\boldsymbol \ell}}
+
+
+\newcommand{\fref}[2][.]
+{Fig.~\ref{fig:#2}\senondot{#1}{({#1})}}%\fref@ccoda{#2}}
+%
+% \sedotelse {cond} {then} {else}
+%
+%     Espande a {then} se cond=., a {else} altrimenti
+%
+\newcommand{\sedotelse}[3]
+    {\def\sedottmpa{#1}\def\sedottmpb{.}%
+     \ifx\sedottmpa\sedottmpb{#2}\else{#3}\fi}
+%
+\newcommand{\senondot}[3][\relax]{\sedotelse{#2}{#1}{#3}}
+%
+\newcommand{\notainterna}[1]{$<<<$ \emph{#1} $>>>$}
+\def\medusa-{{\scshape Medusa}}
+\def\medusa-{{\scshape Medu$\chi$a}}
+\def\medusa-{{\scshape Medu$\Sigma$a}}
+%
+% -- Comando \unafigura[dim]{filename}
+%   default dim = 10cm
+%   se dim = .<n> (<n> intero) dim. standard per tabular con righe
+%   di <n> figure
+%
+\newlength{\unafigstdx}
+\setlength{\unafigstdx}{10cm}
+\newlength{\unafigstdy}
+\setlength{\unafigstdy}{10cm}
+\newcommand{\sceglidim}[1]{\ifcase #1 10cm\or 10cm\or 7.5 cm\else 4cm\fi}
+\def\stddim#1#2;{\ifx .#1\sceglidim{#2}\else #1#2\fi}
+\newcommand{\unafigura}[2][\unafigstdx]
+   {\resizebox{\stddim #1;}{!}{\includegraphics{#2}}}
+\newcommand{\unafiguray}[2][\unafigstdy]
+   {\resizebox{!}{\stddim #1;}{\includegraphics{#2}}}
+%\newcommand{\unafigurax}[2][\unafigstdx]{\fbox{file=`{#2}', hsize=\stddim
+%#1; (to be included)}}
+\newcommand{\unafigurax}[2][10cm]{\framebox[\stddim #1;][c]{file=`{#2}', hsize=\stddim #1; (to be included)}}
+\newlength{\pippolen}
+
+%
+%
+%
+
+%"esempio" = italian word for "example". 
+\newtheoremstyle{esempio} 
+   {\topsep}{\topsep}{\small\listparindent 1.5em
+   \advance \linewidth-2em
+   \parshape 1 1em \linewidth}
+   {}{\hspace{-1em}\itshape}{}{\newline}
+   {\thmname{#1}\thmnumber{ #2}\thmnote{ (#3)}}
+
+\theoremstyle{esempio}
+
+\ifhaschapter
+\newtheorem{example}{Example}[chapter]
+\newtheorem{commento}{Remark}[chapter]
+\else
+\newtheorem{example}{Example}[section]
+\newtheorem{commento}{Remark}[section]
+\fi
+\newcommand{\soprasotto}[2]{\mathrel{\mathop{#1}\limits_{#2}}}
+\newcommand{\commenta}[2]{\soprasotto{\underbrace{#1}}{#2}}
+\newcommand{\er}[1]{(\ref{#1})}
+
+%
+% List of remarks (\`a la "Ten lectures...")
+%
+\newenvironment{remarks}
+{\par
+  \normalfont
+  \textbf{Remarks.}
+  \begin{enumerate}}
+{\end{enumerate}}
+\newcommand{\remark}{\item}
+
+\newcommand{\norma}[2][]{\|{#2}\|_{#1}}
+\let\norm\norma
+\newcommand{\normainf}[1]{\norma[\infty]{#1}}
+\newcommand{\abs}[1]{\lvert{#1}\rvert}
+\newcommand{\floor}[1]{\left\lfloor{#1}\right\rfloor}
+\newcommand{\ceil}[1]{\lceil{#1}\rceil}
+\newcommand{\round}[1]{\lceil{#1}\rfloor}
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\newcommand{\gf}[1]{\operatorname{GF}(#1)}
+
+\newcommand{\redfac}{R}
+\newcommand{\redroot}{b}
+\newcommand{\redvec}{\bfr}
+\newcommand{\reduced}{\bfu}
+\newcommand{\redmtx}{\bfR}
+\newcommand{\npeers}{N}
+\newcommand{\peercap}{M}
+
+\newcommand{\peer}[1]{P_{#1}}
+\newcommand{\idvec}[1]{\operatorname{ID}_{#1}}
+\newcommand{\locap}{C_{\text{lo}}}
+\newcommand{\hicap}{C_{\text{hi}}}
+\newcommand{\defect}{D}
+\newcommand{\excess}{E}
+
+\newenvironment{API}
+               {\list{}{\labelwidth 0pt \itemindent-\leftmargin
+                        \let\makelabel\functionlabel}}
+               {\endlist}
+\newcommand*\functionlabel[1]{\hspace\labelsep
+                                \tt\bfseries {#1}}
+\def\function{\catcode`\_=12 \funzioneii}
+\newcommand\funzioneii[1]{\item[{#1}]\catcode`\_=8}
+
+\def\ppmtp;{PPETP}
+\def\ppetp-{PPETP}
+\def\ppc-{ETCP}
+\newcommand{\vriv}[5][cccc]
+{\left[
+  \begin{array}{#1}
+  {#2} &{#3} &{#4}&{#5} \\
+  \end{array} 
+\right]}
+\newcommand{\vciv}[5][c]
+  {\left[
+     \begin{array}{#1} 
+      {#2} \\ 
+      {#3} \\
+      {#4} \\
+      {#5}
+     \end{array}
+   \right]}
+\newcommand{\perdef}{:=}
+\def\marker-{\ttt Marker!}
+\DeclareTextCommandDefault{\adarange}
+   {{.\kern\fontdimen3\font .\kern\fontdimen3\font}}
+

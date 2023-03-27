@@ -1,0 +1,6 @@
+
+P2P-bin     = %~/P2P/Udine/CLient/obj/Create_Client
+MMEDIA-bin  = ruby $MEDUSA_HOME/DSP/Trivial/trivial_mmedia.rb --server %d
+PLAYER-bin  = %vlc-adapter.rb
+my-port     =  54329
+state-port  =  54328
